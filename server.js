@@ -45,11 +45,11 @@ const CARD_DECK = [
         desc: '【対象】1位、および1位と得点差が±1000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札と防御カードをすべて捨て、5000点ダメージを与える。（必中/無敵・ステロイド・選択不可は防御破棄のみ）'
     },
     {
-        id: 'gold_bag',
-        name: '金袋',
-        category: 'SCORE',
-        image: '/images/gold_bag.png',
-        desc: '自分の得点+3000'
+        id: 'omamori_koban',
+        name: 'お守り小判',
+        category: 'SPECIAL',
+        image: '/images/omamori_koban.png',
+        desc: '【使用時】自分の得点を+3000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費して「ダイヤの剣」の効果を無効化し、さらに自分の得点を+3000点する。'
     },
     {
         id: 'disaster',
@@ -89,7 +89,7 @@ const CARD_DECK = [
 ];
 
 let cardSettings = {
-    gold_bag: true,
+    omamori_koban: true,
     wood_sword: true,
     wood_sword_set: true,
     diamond_sword: true,
@@ -579,10 +579,10 @@ io.on('connection', (socket) => {
             return;
         }
 
-        if (card.id === 'gold_bag') {
+        if (card.id === 'omamori_koban') {
             applyScoreChange(player, 3000);
             player.hand.splice(cardIndex, 1);
-            broadcastGameState(`P${player.number} が「金袋」を使用し、+3000点獲得しました！`);
+            broadcastGameState(`P${player.number} が「お守り小判」を使用し、+3000点獲得しました！`);
         } else if (card.id === 'disaster') {
             player.hand.splice(cardIndex, 1);
             executeDisasterAttack(socket.id);
@@ -1378,7 +1378,6 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
 
 /**
  * ダイヤの剣 発動処理
- * 正しい仕様: 現時点で1位のプレイヤー、および1位との得点差が「±1000点以内」のプレイヤー全員（使用者自身も含む）
  */
 function executeDiamondSword(casterSocketId) {
     const caster = gameState.players[casterSocketId];
@@ -1400,12 +1399,20 @@ function executeDiamondSword(casterSocketId) {
             return;
         }
 
+        // お守り小判の自動発動判定（手札にあれば自動消費して無効化＆+3000点獲得）
+        const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
+        if (kobanIndex !== -1) {
+            target.hand.splice(kobanIndex, 1);
+            applyScoreChange(target, 3000);
+            affectedLogs.push(`P${target.number}(「お守り小判」が身代わり発動！効果無効化＆+3000点獲得)`);
+            return;
+        }
+
         const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
         const isSteroid = target.steroidTurns && target.steroidTurns > 0;
         const isImmune = target.immunityCount && target.immunityCount > 0;
 
         if (isInvincible || isSteroid || isImmune) {
-            // 特記事項: ダメージ（-5000点）および選択不可は付与せず、防御カード破棄のみ適用
             let defMsg = '';
             if (target.defenseCard) {
                 target.defenseCard = null;
@@ -1414,7 +1421,6 @@ function executeDiamondSword(casterSocketId) {
             const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
             affectedLogs.push(`P${target.number}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
         } else {
-            // 通常適用: 手札破棄、防御破棄、-5000点、選択不可付与
             target.hand = [];
             target.defenseCard = null;
             applyScoreChange(target, -5000);

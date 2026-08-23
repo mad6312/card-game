@@ -589,7 +589,7 @@
         }
 
         const CARD_NAMES = {
-            gold_bag: '金袋',
+            omamori_koban: 'お守り小判',
             wood_sword: '木の剣',
             wood_sword_set: '木の剣セット',
             diamond_sword: 'ダイヤの剣',
@@ -1425,8 +1425,8 @@
             let html = '';
 
             if (source === 'HAND') {
-                if (card.id === 'gold_bag') {
-                    html += `<button class="btn" style="background:#27ae60; font-size:1.05em; width:100%;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">使用する (+3000点)</button>`;
+                if (card.id === 'omamori_koban') {
+                    html += `<button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">お守り小判を使用する (+3000点)</button>`;
                 } else if (card.id === 'disaster') {
                     html += `<button class="btn" style="background:#c0392b; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">大災害を発動する</button>`;
                 } else if (card.id === 'diamond_sword') {
