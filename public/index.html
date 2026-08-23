@@ -587,6 +587,7 @@
         const CARD_NAMES = {
             gold_bag: '金袋',
             wood_sword: '木の剣',
+            wood_sword_set: '木の剣セット',
             wood_shield: '木の盾',
             wood_shield_set: '木の盾セット',
             disaster: '大災害',
@@ -1055,7 +1056,6 @@
             return result;
         }
 
-        // ★修正: 木の盾 / 木の盾セット 共通の確率計算処理
         function calculateWoodShieldGroupHitRates(candidates, myScore, attackCount = 1, isDarkness = false) {
             if (!candidates || candidates.length === 0) return { groupStr: '', rateDetailStr: '' };
 
@@ -1148,6 +1148,99 @@
             };
         }
 
+        function calculateWoodSwordSetGroupHitRates(candidates, myScore, attackCount = 1, isDarkness = false) {
+            if (!candidates || candidates.length === 0) return { groupStr: '', rateDetailStr: '' };
+
+            const hitProbabilities = {};
+            candidates.forEach(p => hitProbabilities[p.id] = 0);
+
+            let currentStates = [{
+                aliveIds: candidates.map(p => p.id),
+                prob: 1.0
+            }];
+
+            const darknessMult = isDarkness ? 0.5 : 1.0;
+            const baseProb = 0.5 * darknessMult;
+
+            for (let step = 0; step < attackCount; step++) {
+                const nextStates = [];
+
+                currentStates.forEach(state => {
+                    const aliveCandidates = candidates.filter(p => state.aliveIds.includes(p.id));
+
+                    if (aliveCandidates.length === 0) {
+                        nextStates.push(state);
+                        return;
+                    }
+
+                    const groups = [];
+                    const sorted = [...aliveCandidates].sort((a, b) => Math.abs(myScore - a.score) - Math.abs(myScore - b.score));
+                    sorted.forEach(p => {
+                        const diff = Math.abs(myScore - p.score);
+                        let last = groups[groups.length - 1];
+                        if (last && last.diff === diff) last.players.push(p);
+                        else groups.push({ diff, players: [p] });
+                    });
+
+                    const singleHitProb = {};
+                    let pMissCumulative = 1.0;
+
+                    groups.forEach(g => {
+                        const m = g.players.length;
+                        let r = baseProb;
+                        if (r <= 0 || m === 0) return;
+
+                        const pGroupAllMiss = Math.pow(1 - r, m);
+                        const pGroupHitTotal = pMissCumulative * (1 - pGroupAllMiss);
+                        const pIndividual = pGroupHitTotal / m;
+
+                        g.players.forEach(p => singleHitProb[p.id] = pIndividual);
+                        pMissCumulative *= pGroupAllMiss;
+                    });
+
+                    const totalHitProbInThisStep = Object.values(singleHitProb).reduce((a, b) => a + b, 0);
+                    const missProbInThisStep = 1 - totalHitProbInThisStep;
+
+                    if (missProbInThisStep > 0) {
+                        nextStates.push({
+                            aliveIds: [...state.aliveIds],
+                            prob: state.prob * missProbInThisStep
+                        });
+                    }
+
+                    Object.keys(singleHitProb).forEach(hitPlayerId => {
+                        const pHit = singleHitProb[hitPlayerId];
+                        if (pHit <= 0) return;
+
+                        const transitionProb = state.prob * pHit;
+                        hitProbabilities[hitPlayerId] += transitionProb;
+
+                        nextStates.push({
+                            aliveIds: state.aliveIds.filter(id => id !== hitPlayerId),
+                            prob: transitionProb
+                        });
+                    });
+                });
+
+                currentStates = nextStates;
+            }
+
+            const rateDetails = [];
+            const playerNames = [];
+
+            candidates.forEach(p => {
+                const finalProb = hitProbabilities[p.id] || 0;
+                const ratePercent = Math.round(finalProb * 1000) / 10;
+                rateDetails.push(`${p.name}: ${ratePercent}%`);
+                playerNames.push(p.name);
+            });
+
+            return {
+                groupStr: playerNames.join(','),
+                rateDetailStr: rateDetails.join(', ')
+            };
+        }
+
         function updateHitRateDisplay(selectEl) {
             if (!selectEl) return;
             const displayEl = document.getElementById('hit-rate-info');
@@ -1165,7 +1258,6 @@
             const myPlayer = (latestGameState && myId) ? latestGameState.players[myId] : null;
             const isDarkness = myPlayer && myPlayer.darknessTurns > 0;
 
-            // ★修正: 木の盾（wood_shield）および 木の盾セット（wood_shield_set）の両方で累積計算ロジックを使用
             if ((cardId === 'wood_shield' || cardId === 'wood_shield_set') && (selectEl.value === 'EQUAL_OR_HIGHER' || selectEl.value === 'LOWER')) {
                 let countSelect = null;
                 if (isDefense) {
@@ -1175,7 +1267,6 @@
                     countSelect = document.getElementById(`drop-attack-count-${instanceId}`);
                 }
 
-                // 木の盾は1回攻撃固定、木の盾セットは選択回数（デフォルト1回）
                 const attackCount = (cardId === 'wood_shield_set' && countSelect) ? (Number(countSelect.value) || 1) : 1;
 
                 if (myPlayer) {
@@ -1196,6 +1287,32 @@
 
                     const { rateDetailStr } = calculateWoodShieldGroupHitRates(candidates, myScore, attackCount, isDarkness);
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                }
+            } else if (cardId === 'wood_sword_set') {
+                let countSelect = null;
+                if (isDefense) {
+                    countSelect = document.getElementById('drop-def-attack-count');
+                } else {
+                    const instanceId = selectEl.id.replace(/^drop-target-/, '');
+                    countSelect = document.getElementById(`drop-attack-count-${instanceId}`);
+                }
+
+                const attackCount = countSelect ? (Number(countSelect.value) || 1) : 1;
+
+                if (selectEl.value === 'ALL_LOWER' && myPlayer) {
+                    const myScore = myPlayer.score;
+                    const allPlayers = Object.values(latestGameState.players);
+                    const lowerCandidates = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !isLaterPlayerInRound1(myId, p.id));
+
+                    const { rateDetailStr } = calculateWoodSwordSetGroupHitRates(lowerCandidates, myScore, attackCount, isDarkness);
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                } else {
+                    const baseRate = isDarkness ? 0.25 : 0.5;
+                    const cumulativeHitRate = (1 - Math.pow(1 - baseRate, attackCount));
+                    const ratePercent = Math.round(cumulativeHitRate * 1000) / 10;
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${ratePercent}% (${attackCount}回攻撃)${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                     return;
                 }
             }
@@ -1278,7 +1395,7 @@
 
             if (source === 'HAND') {
                 card = myPlayer.hand.find(c => String(c.instanceId) === String(instanceId));
-                usesLeft = card ? (card.id === 'wood_shield_set' ? (card.usesLeft || 3) : 1) : 1;
+                usesLeft = card ? ((card.id === 'wood_shield_set' || card.id === 'wood_sword_set') ? (card.usesLeft || 3) : 1) : 1;
             } else if (source === 'DEFENSE') {
                 if (myPlayer.defenseCard) {
                     card = myPlayer.defenseCard.card;
@@ -1336,7 +1453,6 @@
 
                         if (equalOrHigher.length > 0) {
                             hasValidTarget = true;
-                            // ★修正: 木の盾モーダル表示時の計算処理
                             const isDarkness = myPlayer.darknessTurns > 0;
                             const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(equalOrHigher, myScore, 1, isDarkness);
                             targetOptionsHtml += `<option value="EQUAL_OR_HIGHER" data-hitrate="${rateDetailStr}">同点以上 (${groupStr})</option>`;
@@ -1347,7 +1463,7 @@
                             const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(lower, myScore, 1, isDarkness);
                             targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                         }
-                    } else if (card.id === 'wood_sword') {
+                    } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
                         const allPlayers = Object.values(latestGameState.players);
                         const myScore = myPlayer.score;
 
@@ -1367,21 +1483,29 @@
                         let lowerPlayers = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !isLaterPlayerInRound1(myId, p.id));
                         if (lowerPlayers.length > 0) {
                             hasValidTarget = true;
-                            const hitRates = calculateLowerTargetsHitRates(lowerPlayers);
-                            const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
-                            const groupStr = lowerPlayers.map(p => p.name).join(',');
-                            targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                            const isDarkness = myPlayer.darknessTurns > 0;
+                            if (card.id === 'wood_sword_set') {
+                                const { rateDetailStr, groupStr } = calculateWoodSwordSetGroupHitRates(lowerPlayers, myScore, 1, isDarkness);
+                                targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                            } else {
+                                const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness);
+                                const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                                const groupStr = lowerPlayers.map(p => p.name).join(',');
+                                targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                            }
                         }
                     }
 
                     html += `<div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">`;
                     html += `<b style="color:#e74c3c;">⚔ 攻撃する:</b><br>`;
 
+                    const isSetCard = (card.id === 'wood_shield_set' || card.id === 'wood_sword_set');
+
                     if (!hasValidTarget) {
                         html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin:4px 0;">対象が存在しません</div>`;
                         html += `対象: <select id="drop-target-${card.instanceId}" disabled style="background:#334155; color:#94a3b8; cursor:not-allowed;"></select><br>`;
                         html += `<div id="hit-rate-info" style="font-size:0.85em; margin-top:4px; min-height:1.2em;"></div>`;
-                        if (card.id === 'wood_shield_set') {
+                        if (isSetCard) {
                             html += `回数: <select id="drop-attack-count-${card.instanceId}" disabled style="background:#334155; color:#94a3b8; cursor:not-allowed;">`;
                             for (let i = 1; i <= usesLeft; i++) {
                                 html += `<option value="${i}">${i}回</option>`;
@@ -1392,7 +1516,7 @@
                     } else {
                         html += `対象: <select id="drop-target-${card.instanceId}" data-card-id="${card.id}" onchange="updateHitRateDisplay(this)">${targetOptionsHtml}</select><br>`;
                         html += `<div id="hit-rate-info" style="font-size:0.85em; margin-top:4px; min-height:1.2em;"></div>`;
-                        if (card.id === 'wood_shield_set') {
+                        if (isSetCard) {
                             html += `回数: <select id="drop-attack-count-${card.instanceId}" onchange="updateHitRateDisplay(document.getElementById('drop-target-${card.instanceId}'))">`;
                             for (let i = 1; i <= usesLeft; i++) {
                                 html += `<option value="${i}">${i}回</option>`;
@@ -1442,16 +1566,49 @@
                         const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(lower, myScore, 1, isDarkness);
                         targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                     }
+                } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
+                    const allPlayers = Object.values(latestGameState.players);
+                    const myScore = myPlayer.score;
+
+                    allPlayers.forEach((p) => {
+                        if (p.id !== myId) {
+                            const scoreDiff = p.score - myScore;
+                            const isImmune = p.immunityCount && p.immunityCount > 0;
+                            if (isLaterPlayerInRound1(myId, p.id)) return;
+
+                            if (scoreDiff >= 0 && scoreDiff <= 5000 && !isImmune) {
+                                hasValidTarget = true;
+                                targetOptionsHtml += `<option value="${p.id}" data-hitrate="50%">${p.name}</option>`;
+                            }
+                        }
+                    });
+
+                    let lowerPlayers = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !isLaterPlayerInRound1(myId, p.id));
+                    if (lowerPlayers.length > 0) {
+                        hasValidTarget = true;
+                        const isDarkness = myPlayer.darknessTurns > 0;
+                        if (card.id === 'wood_sword_set') {
+                            const { rateDetailStr, groupStr } = calculateWoodSwordSetGroupHitRates(lowerPlayers, myScore, 1, isDarkness);
+                            targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        } else {
+                            const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness);
+                            const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                            const groupStr = lowerPlayers.map(p => p.name).join(',');
+                            targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        }
+                    }
                 }
 
                 html += `<div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">`;
                 html += `<b style="color:#e74c3c;">⚔ 防御を外して攻撃:</b><br>`;
 
+                const isSetCard = (card.id === 'wood_shield_set' || card.id === 'wood_sword_set');
+
                 if (!hasValidTarget) {
                     html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin:4px 0;">対象が存在しません</div>`;
                     html += `対象: <select id="drop-def-attack-target" disabled style="background:#334155; color:#94a3b8; cursor:not-allowed;"></select><br>`;
                     html += `<div id="hit-rate-info" style="font-size:0.85em; margin-top:4px; min-height:1.2em;"></div>`;
-                    if (card.id === 'wood_shield_set') {
+                    if (isSetCard) {
                         html += `回数: <select id="drop-def-attack-count" disabled style="background:#334155; color:#94a3b8; cursor:not-allowed;">`;
                         for (let i = 1; i <= usesLeft; i++) {
                             html += `<option value="${i}">${i}回</option>`;
@@ -1462,7 +1619,7 @@
                 } else {
                     html += `対象: <select id="drop-def-attack-target" data-card-id="${card.id}" onchange="updateHitRateDisplay(this)">${targetOptionsHtml}</select><br>`;
                     html += `<div id="hit-rate-info" style="font-size:0.85em; margin-top:4px; min-height:1.2em;"></div>`;
-                    if (card.id === 'wood_shield_set') {
+                    if (isSetCard) {
                         html += `回数: <select id="drop-def-attack-count" onchange="updateHitRateDisplay(document.getElementById('drop-def-attack-target'))">`;
                         for (let i = 1; i <= usesLeft; i++) {
                             html += `<option value="${i}">${i}回</option>`;
