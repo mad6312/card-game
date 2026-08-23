@@ -38,6 +38,13 @@ const CARD_DECK = [
         desc: '攻撃: 自分より上位なら単体(5000点差以内/成功率1/2)、下位なら全員順次判定(成功率1/2/指定回数攻撃) / 防御: 攻撃を無効(計3回で破棄/高得点者からの攻撃は無効化不可)'
     },
     {
+        id: 'diamond_sword',
+        name: 'ダイヤの剣',
+        category: 'ATTACK',
+        image: '/images/diamond_sword.png',
+        desc: '【対象】1位、および1位と得点差が±1000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札と防御カードをすべて捨て、5000点ダメージを与える。（必中/無敵・ステロイド・選択不可は防御破棄のみ）'
+    },
+    {
         id: 'gold_bag',
         name: '金袋',
         category: 'SCORE',
@@ -85,6 +92,7 @@ let cardSettings = {
     gold_bag: true,
     wood_sword: true,
     wood_sword_set: true,
+    diamond_sword: true,
     wood_shield: true,
     wood_shield_set: true,
     disaster: true,
@@ -183,7 +191,6 @@ function skipDraftAndStartGame() {
     gameState.round = 1;
     gameState.actedPlayerIds = [];
 
-    // 最初のプレイヤーを決定
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
@@ -261,23 +268,19 @@ function resolveDraft() {
 function getNextPlayerId() {
     const allPlayers = Object.values(gameState.players);
 
-    // まだ行動していないプレイヤーを抽出
     const unactedPlayers = allPlayers.filter(p => !gameState.actedPlayerIds.includes(p.id));
     if (unactedPlayers.length === 0) return null;
 
-    // --- 1巡目かつ全員同点の場合の例外判定 ---
     if (gameState.round === 1) {
         const firstScore = allPlayers[0].score;
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            // P1 -> P2 -> P3 -> P4 (number昇順) で最初に行動していないプレイヤーを返す
             const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
             return sortedByNumber[0].id;
         }
     }
 
-    // --- 基本ルール（動的な順番決定）---
     unactedPlayers.sort((a, b) => b.score - a.score);
     const highestScore = unactedPlayers[0].score;
     const topCandidates = unactedPlayers.filter(p => p.score === highestScore);
@@ -583,6 +586,9 @@ io.on('connection', (socket) => {
         } else if (card.id === 'disaster') {
             player.hand.splice(cardIndex, 1);
             executeDisasterAttack(socket.id);
+        } else if (card.id === 'diamond_sword') {
+            player.hand.splice(cardIndex, 1);
+            executeDiamondSword(socket.id);
         } else if (card.id === 'invincible_armor') {
             player.invincibleTurns = 4;
             player.invincibleSource = 'ARMOR';
@@ -1144,9 +1150,6 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
     startSingleGroupAttack();
 }
 
-/**
- * 木の剣セット: 単体攻撃（パターンA）
- */
 function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, onComplete) {
     const attacker = gameState.players[attackerId];
     const target = gameState.players[targetId];
@@ -1242,9 +1245,6 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
     doNextAttack();
 }
 
-/**
- * 木の剣セット: グループ攻撃（パターンB）
- */
 function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onComplete) {
     const attacker = gameState.players[attackerId];
     if (!attacker) {
@@ -1374,6 +1374,56 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
     }
 
     startSingleGroupAttack();
+}
+
+/**
+ * ダイヤの剣 発動処理
+ * 正しい仕様: 現時点で1位のプレイヤー、および1位との得点差が「±1000点以内」のプレイヤー全員（使用者自身も含む）
+ */
+function executeDiamondSword(casterSocketId) {
+    const caster = gameState.players[casterSocketId];
+    if (!caster) return;
+
+    // 全プレイヤーから現時点の最高得点（1位の得点）を取得
+    const allPlayers = Object.values(gameState.players);
+    const maxScore = Math.max(...allPlayers.map(p => p.score));
+
+    // 1位のプレイヤー、および1位との得点差が ±1000点以内のプレイヤー全員（使用者自身も含む）
+    const targetPlayers = allPlayers.filter(p => Math.abs(maxScore - p.score) <= 1000);
+
+    const affectedLogs = [];
+
+    targetPlayers.forEach(target => {
+        // 1巡目の先行効果無効判定（自身以外）
+        if (target.id !== casterSocketId && isImmuneToRound1CardEffect(target.id, casterSocketId)) {
+            affectedLogs.push(`P${target.number}(1巡目効果無効)`);
+            return;
+        }
+
+        const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
+        const isSteroid = target.steroidTurns && target.steroidTurns > 0;
+        const isImmune = target.immunityCount && target.immunityCount > 0;
+
+        if (isInvincible || isSteroid || isImmune) {
+            // 特記事項: ダメージ（-5000点）および選択不可は付与せず、防御カード破棄のみ適用
+            let defMsg = '';
+            if (target.defenseCard) {
+                target.defenseCard = null;
+                defMsg = '防御カード破棄';
+            }
+            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
+            affectedLogs.push(`P${target.number}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
+        } else {
+            // 通常適用: 手札破棄、防御破棄、-5000点、選択不可付与
+            target.hand = [];
+            target.defenseCard = null;
+            applyScoreChange(target, -5000);
+            target.immunityCount = 2;
+            affectedLogs.push(`P${target.number}(-5000点・手札防御全破棄・選択不可付与)`);
+        }
+    });
+
+    broadcastGameState(`P${caster.number} が「ダイヤの剣」を発動！ (対象: ${affectedLogs.join(' / ')})`);
 }
 
 function executeStandardAttack(attackerId, targetId, cardId) {

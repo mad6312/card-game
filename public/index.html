@@ -191,19 +191,21 @@
             bottom: 115%;
             left: 50%;
             transform: translateX(-50%);
-            width: 200px;
+            width: 220px;
             background: rgba(15, 23, 42, 0.98);
             color: #f8fafc;
             border: 1px solid #f1c40f;
             border-radius: 8px;
             padding: 8px 10px;
             font-size: 0.8em;
-            line-height: 1.4;
+            line-height: 1.45;
             text-align: left;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
             z-index: 9999;
             transition: opacity 0.2s ease, visibility 0.2s ease;
             pointer-events: none;
+            white-space: pre-line;
+            word-break: break-word;
         }
 
         .def-card-wrapper:hover .card-tooltip {
@@ -297,19 +299,21 @@
             bottom: 115%;
             left: 50%;
             transform: translateX(-50%);
-            width: 200px;
+            width: 220px;
             background: rgba(15, 23, 42, 0.98);
             color: #f8fafc;
             border: 1px solid #f1c40f;
             border-radius: 8px;
             padding: 8px 10px;
             font-size: 0.8em;
-            line-height: 1.4;
+            line-height: 1.45;
             text-align: left;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
             z-index: 9999;
             transition: opacity 0.2s ease, visibility 0.2s ease;
             pointer-events: none;
+            white-space: pre-line;
+            word-break: break-word;
         }
 
         .card-tooltip::after {
@@ -588,6 +592,7 @@
             gold_bag: '金袋',
             wood_sword: '木の剣',
             wood_sword_set: '木の剣セット',
+            diamond_sword: 'ダイヤの剣',
             wood_shield: '木の盾',
             wood_shield_set: '木の盾セット',
             disaster: '大災害',
@@ -1413,7 +1418,7 @@
 
             preview.innerHTML = `
                 ${card.image ? `<img src="${card.image}" style="width:110px; height:160px; object-fit:contain; border-radius:6px; margin:0 auto; display:block;">` : ''}
-                <p style="font-size:0.85em; color:#cbd5e1; margin:8px 0 0 0;">${card.desc}</p>
+                <p style="font-size:0.85em; color:#cbd5e1; margin:8px 0 0 0; white-space:pre-line;">${card.desc}</p>
             `;
 
             const hasDefense = !!myPlayer.defenseCard;
@@ -1424,6 +1429,8 @@
                     html += `<button class="btn" style="background:#27ae60; font-size:1.05em; width:100%;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">使用する (+3000点)</button>`;
                 } else if (card.id === 'disaster') {
                     html += `<button class="btn" style="background:#c0392b; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">大災害を発動する</button>`;
+                } else if (card.id === 'diamond_sword') {
+                    html += `<button class="btn" style="background:#0ea5e9; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダイヤの剣を発動する</button>`;
                 } else if (card.id === 'invincible_armor') {
                     html += `<button class="btn" style="background:#f1c40f; color:#000; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">無敵アーマーを使用する</button>`;
                 } else if (card.id === 'dark_matter') {
