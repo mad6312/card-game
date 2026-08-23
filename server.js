@@ -316,6 +316,63 @@ function skipIfImmuneToRound1CardEffect(target, caster, cardLabel) {
 }
 
 /**
+ * バフ（無敵アーマー / ステロイド）解除時の処理
+ */
+function handleBuffExpire(player, buffType) {
+    const cardName = buffType === 'ARMOR' ? '無敵アーマー' : 'ステロイド';
+    const prevMyScore = player.score;
+
+    // 1. 自身の得点を +1000点
+    applyScoreChange(player, 1000);
+    const newMyScore = player.score;
+
+    const penalizedNames = [];
+
+    // 2. 相手へのペナルティ判定
+    Object.values(gameState.players).forEach(opponent => {
+        if (opponent.id === player.id) return;
+
+        if (isImmuneToRound1CardEffect(opponent.id, player.id)) return;
+
+        // 除外判定
+        const isInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
+        const isImmune = opponent.immunityCount && opponent.immunityCount > 0;
+        const isSteroid = opponent.steroidTurns && opponent.steroidTurns > 0;
+
+        // 無敵・選択不可は共通で除外。ステロイドの解除時はステロイド状態の相手も除外。
+        if (isInvincible || isImmune) return;
+        if (buffType === 'STERIOD' && isSteroid) return;
+
+        // 条件A: 解除前の時点で自分と同点だった相手
+        const isConditionA = (opponent.score === prevMyScore);
+        // 条件B: 解除後に自分に追いつかれた・逆転された相手
+        const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
+
+        if (isConditionA || isConditionB) {
+            const isSuccess = Math.random() < 0.5;
+
+            if (isSuccess) {
+                opponent.hand = [];
+                opponent.defenseCard = null;
+                applyScoreChange(opponent, -3000);
+                opponent.immunityCount = 2;
+
+                penalizedNames.push(`P${opponent.number}(成功)`);
+            } else {
+                penalizedNames.push(`P${opponent.number}(不発)`);
+            }
+        }
+    });
+
+    let logMsg = `P${player.number} の「${cardName}」が解除され、+1000点獲得！`;
+    if (penalizedNames.length > 0) {
+        logMsg += ` ペナルティ結果: ${penalizedNames.join(', ')}`;
+    }
+
+    broadcastGameState(logMsg);
+}
+
+/**
  * ターン進行処理関数
  */
 function proceedToNextTurn() {
@@ -323,26 +380,44 @@ function proceedToNextTurn() {
 
     // 現在のプレイヤーを行動済みリストに追加
     const currId = gameState.currentTurnPlayerId;
+    const currPlayer = currId ? gameState.players[currId] : null;
+
     if (currId && !gameState.actedPlayerIds.includes(currId)) {
         gameState.actedPlayerIds.push(currId);
     }
+
+    // --- ターン終了時の処理 ---
+
+    // 1. 煙幕（暗闇）：デバフを付与されているプレイヤー自身がターンを終了したタイミングで残ターンを「-1」
+    if (currPlayer && currPlayer.darknessTurns > 0) {
+        currPlayer.darknessTurns -= 1;
+    }
+
+    // 2. 無敵アーマー / ステロイド：いずれかのプレイヤーが1回ターンを終了したタイミングで残ターンを「-1」
+    Object.values(gameState.players).forEach(p => {
+        if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
+            p.invincibleTurns -= 1;
+            if (p.invincibleTurns === 0) {
+                p.invincibleSource = null;
+                handleBuffExpire(p, 'ARMOR');
+            }
+        }
+        if (p.steroidTurns > 0) {
+            p.steroidTurns -= 1;
+            if (p.steroidTurns === 0) {
+                handleBuffExpire(p, 'STERIOD');
+            }
+        }
+    });
 
     // 全員が行動完了した場合は次の巡目へ
     if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
         gameState.round += 1;
         gameState.actedPlayerIds = []; // 巡目リセット
 
-        // 各種ターン経過バフ・デバフの更新
+        // 選択不可状態のカウント更新
         Object.values(gameState.players).forEach(p => {
             if (p.immunityCount > 0) p.immunityCount -= 1;
-            if (p.invincibleTurns > 0) p.invincibleTurns -= 1;
-            if (p.darknessTurns > 0) p.darknessTurns -= 1;
-            if (p.steroidTurns > 0) {
-                p.steroidTurns -= 1;
-                if (p.steroidTurns === 0) {
-                    applyScoreChange(p, 1000);
-                }
-            }
         });
 
         if (gameState.round > 10) {
@@ -355,6 +430,15 @@ function proceedToNextTurn() {
     const nextPlayerId = getNextPlayerId();
     gameState.currentTurnPlayerId = nextPlayerId;
     gameState.turnPhase = 'BONUS_CHOICE';
+
+    // 3. ダークマター：使用者の次のターン開始時に解除
+    if (nextPlayerId) {
+        const nextPlayer = gameState.players[nextPlayerId];
+        if (nextPlayer && nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
+            nextPlayer.invincibleTurns = 0;
+            nextPlayer.invincibleSource = null;
+        }
+    }
 
     broadcastGameState(`P${gameState.players[gameState.currentTurnPlayerId].number} のターンになりました。`);
 }

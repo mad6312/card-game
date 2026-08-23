@@ -211,9 +211,47 @@
             opacity: 1;
         }
 
-        .draggable-def-card {
-            cursor: pointer;
-            border: 1px dashed #f1c40f;
+        .status-badge-wrapper {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 5px;
+            vertical-align: middle;
+        }
+
+        .status-badge-wrapper:hover {
+            z-index: 100;
+        }
+
+        .status-badge-wrapper:hover .card-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .status-badge-img {
+            width: 22px;
+            height: 32px;
+            object-fit: contain;
+            border-radius: 2px;
+            border: 1px solid #f1c40f;
+            display: block;
+        }
+
+        .status-badge-count {
+            position: absolute;
+            top: -4px;
+            right: -6px;
+            background: #e74c3c;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 1px 4px;
+            border-radius: 8px;
+            border: 1px solid #ffffff;
+            line-height: 1;
+            pointer-events: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
         }
 
         .my-hand-container {
@@ -835,16 +873,53 @@
 
                 if (p.invincibleTurns > 0) {
                     if (p.invincibleSource === 'DARK_MATTER') {
-                        statusBadge += `<span style="color:#f1c40f; font-weight:bold; margin-left:5px;">[無敵]</span>`;
+                        statusBadge += `
+                            <div class="status-badge-wrapper">
+                                <img src="/images/dark_matter.png" class="status-badge-img" alt="ダークマター">
+                                <div class="card-tooltip">
+                                    <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">ダークマター</div>
+                                    <div>無敵：あらゆる攻撃カードの効果を受けない。</div>
+                                </div>
+                            </div>
+                        `;
                     } else if (isMe) {
-                        statusBadge += `<span style="color:#f1c40f; font-weight:bold; margin-left:5px;">[無敵:${p.invincibleTurns}]</span>`;
+                        statusBadge += `
+                            <div class="status-badge-wrapper">
+                                <img src="/images/invincible_armor.png" class="status-badge-img" alt="無敵アーマー">
+                                <span class="status-badge-count">${p.invincibleTurns}</span>
+                                <div class="card-tooltip">
+                                    <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">無敵アーマー</div>
+                                    <div>無敵：あらゆる攻撃カードの効果を受けない。</div>
+                                </div>
+                            </div>
+                        `;
                     }
                 }
+
                 if (p.steroidTurns > 0 && isMe) {
-                    statusBadge += `<span style="color:#e67e22; font-weight:bold; margin-left:5px;">[ステロイド:${p.steroidTurns}]</span>`;
+                    statusBadge += `
+                        <div class="status-badge-wrapper">
+                            <img src="/images/steroid.png" class="status-badge-img" alt="ステロイド">
+                            <span class="status-badge-count">${p.steroidTurns}</span>
+                            <div class="card-tooltip">
+                                <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">ステロイド</div>
+                                <div>ステロイド：一部を除く攻撃カードの効果を受けない。</div>
+                            </div>
+                        </div>
+                    `;
                 }
+
                 if (p.darknessTurns > 0) {
-                    statusBadge += `<span style="color:#95a5a6; font-weight:bold; margin-left:5px;">[暗闇:${p.darknessTurns}]</span>`;
+                    statusBadge += `
+                        <div class="status-badge-wrapper">
+                            <img src="/images/smoke_screen.png" class="status-badge-img" alt="煙幕">
+                            <span class="status-badge-count">${p.darknessTurns}</span>
+                            <div class="card-tooltip">
+                                <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">煙幕</div>
+                                <div>暗闇：攻撃カードの命中率が半減される。</div>
+                            </div>
+                        </div>
+                    `;
                 }
                 box.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
