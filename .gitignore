@@ -4,4 +4,3 @@ NOT Dcard-gamenode_modules.search-ms
 # APIキーや個人の設定ファイルを除外
 config.yaml
 .env
-.md
