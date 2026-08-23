@@ -394,7 +394,12 @@ function proceedToNextTurn() {
     }
 
     // 2. 無敵アーマー / ステロイド：いずれかのプレイヤーが1回ターンを終了したタイミングで残ターンを「-1」
+    // 3. 選択不可：付与されたプレイヤー以外の誰かのターンが1回終了する毎に「-1」
     Object.values(gameState.players).forEach(p => {
+        if (currId && p.id !== currId && p.immunityCount > 0) {
+            p.immunityCount -= 1;
+        }
+
         if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
             p.invincibleTurns -= 1;
             if (p.invincibleTurns === 0) {
@@ -414,11 +419,6 @@ function proceedToNextTurn() {
     if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
         gameState.round += 1;
         gameState.actedPlayerIds = []; // 巡目リセット
-
-        // 選択不可状態のカウント更新
-        Object.values(gameState.players).forEach(p => {
-            if (p.immunityCount > 0) p.immunityCount -= 1;
-        });
 
         if (gameState.round > 10) {
             broadcastGameState('全10巡が終了しました！ゲーム終了！');
