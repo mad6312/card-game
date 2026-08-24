@@ -595,6 +595,7 @@
             diamond_sword: 'ダイヤの剣',
             wood_shield: '木の盾',
             wood_shield_set: '木の盾セット',
+            bronze_shield: '青銅の盾',
             disaster: '大災害',
             invincible_armor: '無敵アーマー',
             dark_matter: 'ダークマター',
@@ -1153,6 +1154,46 @@
             };
         }
 
+        function calculateBronzeShieldGroupHitRates(candidates, myScore, isDarkness = false) {
+            if (!candidates || candidates.length === 0) return { groupStr: '', rateDetailStr: '' };
+
+            const sorted = [...candidates].sort((a, b) => (myScore - a.score) - (myScore - b.score));
+            const darknessMult = isDarkness ? 0.5 : 1.0;
+
+            const groups = [];
+            sorted.forEach(p => {
+                const diff = myScore - p.score;
+                let last = groups[groups.length - 1];
+                if (last && last.diff === diff) last.players.push(p);
+                else groups.push({ diff, players: [p] });
+            });
+
+            const result = [];
+            let pMissCumulative = 1.0;
+
+            groups.forEach(g => {
+                const m = g.players.length;
+                let r = Math.max(0, 1 - g.diff / 5000) * darknessMult;
+                if (r <= 0 || m === 0) return;
+
+                const pGroupAllMiss = Math.pow(1 - r, m);
+                const pGroupHitTotal = pMissCumulative * (1 - pGroupAllMiss);
+                const pIndividual = pGroupHitTotal / m;
+
+                g.players.forEach(p => {
+                    const ratePercent = Math.round(pIndividual * 1000) / 10;
+                    result.push(`${p.name}: ${ratePercent}%`);
+                });
+
+                pMissCumulative *= pGroupAllMiss;
+            });
+
+            return {
+                groupStr: sorted.map(p => p.name).join(','),
+                rateDetailStr: result.join(', ')
+            };
+        }
+
         function calculateWoodSwordSetGroupHitRates(candidates, myScore, attackCount = 1, isDarkness = false) {
             if (!candidates || candidates.length === 0) return { groupStr: '', rateDetailStr: '' };
 
@@ -1291,6 +1332,25 @@
                         : hitCandidates.filter(p => p.score < myScore);
 
                     const { rateDetailStr } = calculateWoodShieldGroupHitRates(candidates, myScore, attackCount, isDarkness);
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                }
+            } else if (cardId === 'bronze_shield') {
+                if (selectEl.value === 'CLOSEST_HIGHER') {
+                    const rawRateInfo = selectedOption.getAttribute('data-hitrate');
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rawRateInfo} (必中/選出確率)</span>`;
+                    return;
+                } else if (selectEl.value === 'LOWER' && myPlayer) {
+                    const myScore = myPlayer.score;
+                    const allPlayers = Object.values(latestGameState.players);
+                    const candidates = allPlayers.filter(p => {
+                        if (p.id === myId) return false;
+                        if (p.immunityCount && p.immunityCount > 0) return false;
+                        if (isLaterPlayerInRound1(myId, p.id)) return false;
+                        return p.score < myScore && (myScore - p.score) < 5000;
+                    });
+
+                    const { rateDetailStr } = calculateBronzeShieldGroupHitRates(candidates, myScore, isDarkness);
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                     return;
                 }
@@ -1470,6 +1530,40 @@
                             const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(lower, myScore, 1, isDarkness);
                             targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                         }
+                    } else if (card.id === 'bronze_shield') {
+                        const allPlayers = Object.values(latestGameState.players);
+                        const myScore = myPlayer.score;
+
+                        const validCandidates = allPlayers.filter(p => {
+                            if (p.id === myId) return false;
+                            if (p.immunityCount && p.immunityCount > 0) return false;
+                            if (isLaterPlayerInRound1(myId, p.id)) return false;
+                            return true;
+                        });
+
+                        const higherCandidates = validCandidates.filter(p => {
+                            const diff = p.score - myScore;
+                            return diff >= 0 && diff <= 10000;
+                        });
+
+                        if (higherCandidates.length > 0) {
+                            hasValidTarget = true;
+                            const minDiff = Math.min(...higherCandidates.map(p => p.score - myScore));
+                            const closestGroup = higherCandidates.filter(p => (p.score - myScore) === minDiff);
+                            const count = closestGroup.length;
+                            const indivRate = Math.round((100 / count) * 10) / 10;
+                            const rateDetailStr = closestGroup.map(p => `${p.name}: ${indivRate}%`).join(', ');
+                            const groupStr = closestGroup.map(p => p.name).join('/');
+                            targetOptionsHtml += `<option value="CLOSEST_HIGHER" data-hitrate="${rateDetailStr}">同点以上最寄 (${groupStr})</option>`;
+                        }
+
+                        const lowerCandidates = validCandidates.filter(p => p.score < myScore && (myScore - p.score) < 5000);
+                        if (lowerCandidates.length > 0) {
+                            hasValidTarget = true;
+                            const isDarkness = myPlayer.darknessTurns > 0;
+                            const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
+                            targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        }
                     } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
                         const allPlayers = Object.values(latestGameState.players);
                         const myScore = myPlayer.score;
@@ -1571,6 +1665,40 @@
                         hasValidTarget = true;
                         const isDarkness = myPlayer.darknessTurns > 0;
                         const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(lower, myScore, 1, isDarkness);
+                        targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                    }
+                } else if (card.id === 'bronze_shield') {
+                    const allPlayers = Object.values(latestGameState.players);
+                    const myScore = myPlayer.score;
+
+                    const validCandidates = allPlayers.filter(p => {
+                        if (p.id === myId) return false;
+                        if (p.immunityCount && p.immunityCount > 0) return false;
+                        if (isLaterPlayerInRound1(myId, p.id)) return false;
+                        return true;
+                    });
+
+                    const higherCandidates = validCandidates.filter(p => {
+                        const diff = p.score - myScore;
+                        return diff >= 0 && diff <= 10000;
+                    });
+
+                    if (higherCandidates.length > 0) {
+                        hasValidTarget = true;
+                        const minDiff = Math.min(...higherCandidates.map(p => p.score - myScore));
+                        const closestGroup = higherCandidates.filter(p => (p.score - myScore) === minDiff);
+                        const count = closestGroup.length;
+                        const indivRate = Math.round((100 / count) * 10) / 10;
+                        const rateDetailStr = closestGroup.map(p => `${p.name}: ${indivRate}%`).join(', ');
+                        const groupStr = closestGroup.map(p => p.name).join('/');
+                        targetOptionsHtml += `<option value="CLOSEST_HIGHER" data-hitrate="${rateDetailStr}">同点以上最寄 (${groupStr})</option>`;
+                    }
+
+                    const lowerCandidates = validCandidates.filter(p => p.score < myScore && (myScore - p.score) < 5000);
+                    if (lowerCandidates.length > 0) {
+                        hasValidTarget = true;
+                        const isDarkness = myPlayer.darknessTurns > 0;
+                        const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
                         targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                     }
                 } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
