@@ -395,15 +395,20 @@ function proceedToNextTurn() {
         gameState.actedPlayerIds.push(currId);
     }
 
+    // 1. 煙幕（暗闇）：デバフを付与されているプレイヤー自身がターンを終了したタイミングで残ターンを「-1」
     if (currPlayer && currPlayer.darknessTurns > 0) {
         currPlayer.darknessTurns -= 1;
     }
 
+    // 2. 選択不可：付与されたプレイヤー以外の誰かのターンが1回終了する毎に「-1」
     Object.values(gameState.players).forEach(p => {
         if (currId && p.id !== currId && p.immunityCount > 0) {
             p.immunityCount -= 1;
         }
+    });
 
+    // 3. 無敵アーマー / ステロイド：いずれかのプレイヤーが1回ターンを終了したタイミングで残ターンを「-1」
+    Object.values(gameState.players).forEach(p => {
         if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
             p.invincibleTurns -= 1;
             if (p.invincibleTurns === 0) {
@@ -977,15 +982,7 @@ function executeWoodShieldGroupAttack(attackerId, groupType) {
             return;
         }
 
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-            return;
-        }
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-            return;
-        }
-
+        // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -999,6 +996,15 @@ function executeWoodShieldGroupAttack(attackerId, groupType) {
                 broadcastGameState(msg);
                 return;
             }
+        }
+
+        if (target.steroidTurns && target.steroidTurns > 0) {
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
+            return;
+        }
+        if (target.invincibleTurns && target.invincibleTurns > 0) {
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
+            return;
         }
 
         applyScoreChange(target, -3000);
@@ -1109,18 +1115,7 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
             attackCountUsed++;
             cardObj.usesLeft -= 1;
 
-            if (target.steroidTurns && target.steroidTurns > 0) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
+            // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
             if (target.defenseCard) {
                 if (isSwordDefenseBlocked(target, attacker)) {
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1135,6 +1130,18 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
                     setTimeout(() => startSingleGroupAttack(), 500);
                     return;
                 }
+            }
+
+            if (target.steroidTurns && target.steroidTurns > 0) {
+                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
+                onComplete();
+                return;
+            }
+
+            if (target.invincibleTurns && target.invincibleTurns > 0) {
+                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
+                onComplete();
+                return;
             }
 
             applyScoreChange(target, -3000);
@@ -1203,18 +1210,7 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
             return;
         }
 
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
-        }
-
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
-        }
-
+        // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1234,6 +1230,18 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
                 }
                 return;
             }
+        }
+
+        if (target.invincibleTurns && target.invincibleTurns > 0) {
+            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
+            onComplete();
+            return;
+        }
+
+        if (target.steroidTurns && target.steroidTurns > 0) {
+            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
+            onComplete();
+            return;
         }
 
         applyScoreChange(target, -3000);
@@ -1335,18 +1343,7 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
             attackCountUsed++;
             cardObj.usesLeft -= 1;
 
-            if (target.steroidTurns && target.steroidTurns > 0) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
+            // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
             if (target.defenseCard) {
                 if (isSwordDefenseBlocked(target, attacker)) {
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1363,6 +1360,18 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
                 }
             }
 
+            if (target.steroidTurns && target.steroidTurns > 0) {
+                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
+                onComplete();
+                return;
+            }
+
+            if (target.invincibleTurns && target.invincibleTurns > 0) {
+                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
+                onComplete();
+                return;
+            }
+
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
             broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (P${target.number}は選択不可状態になりました)`);
@@ -1376,30 +1385,23 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
     startSingleGroupAttack();
 }
 
-/**
- * ダイヤの剣 発動処理
- */
 function executeDiamondSword(casterSocketId) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
 
-    // 全プレイヤーから現時点の最高得点（1位の得点）を取得
     const allPlayers = Object.values(gameState.players);
     const maxScore = Math.max(...allPlayers.map(p => p.score));
 
-    // 1位のプレイヤー、および1位との得点差が ±1000点以内のプレイヤー全員（使用者自身も含む）
     const targetPlayers = allPlayers.filter(p => Math.abs(maxScore - p.score) <= 1000);
 
     const affectedLogs = [];
 
     targetPlayers.forEach(target => {
-        // 1巡目の先行効果無効判定（自身以外）
         if (target.id !== casterSocketId && isImmuneToRound1CardEffect(target.id, casterSocketId)) {
             affectedLogs.push(`P${target.number}(1巡目効果無効)`);
             return;
         }
 
-        // お守り小判の自動発動判定（手札にあれば自動消費して無効化＆+3000点獲得）
         const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
         if (kobanIndex !== -1) {
             target.hand.splice(kobanIndex, 1);
@@ -1463,16 +1465,7 @@ function executeStandardAttack(attackerId, targetId, cardId) {
         return;
     }
 
-    if (target.invincibleTurns && target.invincibleTurns > 0) {
-        broadcastGameState(logPrefix + rateText + `命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    if (isSteroid) {
-        broadcastGameState(logPrefix + rateText + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
+    // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
     if (target.defenseCard) {
         if (isSwordDefenseBlocked(target, attacker)) {
             broadcastGameState(logPrefix + rateText + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1486,6 +1479,16 @@ function executeStandardAttack(attackerId, targetId, cardId) {
             broadcastGameState(msg);
             return;
         }
+    }
+
+    if (target.invincibleTurns && target.invincibleTurns > 0) {
+        broadcastGameState(logPrefix + rateText + `命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
+        return;
+    }
+
+    if (isSteroid) {
+        broadcastGameState(logPrefix + rateText + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
+        return;
     }
 
     applyScoreChange(target, -3000);
@@ -1545,16 +1548,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
                 return;
             }
 
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                broadcastGameState(logPrefix + `命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
-                return;
-            }
-
-            if (isSteroid) {
-                broadcastGameState(logPrefix + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
-                return;
-            }
-
+            // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
             if (target.defenseCard) {
                 if (isSwordDefenseBlocked(target, attacker)) {
                     broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1568,6 +1562,16 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
                     broadcastGameState(msg);
                     return;
                 }
+            }
+
+            if (target.invincibleTurns && target.invincibleTurns > 0) {
+                broadcastGameState(logPrefix + `命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
+                return;
+            }
+
+            if (isSteroid) {
+                broadcastGameState(logPrefix + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
+                return;
             }
 
             applyScoreChange(target, -3000);
@@ -1607,16 +1611,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
         return;
     }
 
-    if (target.invincibleTurns && target.invincibleTurns > 0) {
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    if (isSteroid) {
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
+    // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
     if (target.defenseCard) {
         if (isSwordDefenseBlocked(target, attacker)) {
             broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1630,6 +1625,16 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
             broadcastGameState(msg);
             return;
         }
+    }
+
+    if (target.invincibleTurns && target.invincibleTurns > 0) {
+        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
+        return;
+    }
+
+    if (isSteroid) {
+        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
+        return;
     }
 
     applyScoreChange(target, -3000);
@@ -1677,18 +1682,7 @@ function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onCom
 
         cardObj.usesLeft -= 1;
 
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        if (isSteroid) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
+        // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1703,6 +1697,18 @@ function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onCom
                 setTimeout(doNextAttack, 500);
                 return;
             }
+        }
+
+        if (target.invincibleTurns && target.invincibleTurns > 0) {
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
+            setTimeout(doNextAttack, 500);
+            return;
+        }
+
+        if (isSteroid) {
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
+            setTimeout(doNextAttack, 500);
+            return;
         }
 
         applyScoreChange(target, -3000);
