@@ -28,7 +28,7 @@ const CARD_DECK = [
         name: '青銅の盾',
         category: 'DEFENSE',
         image: '/images/bronze_shield.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】\n上：100\n下：100-(得点差/50)\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
     },
     {
         id: 'wood_sword',
@@ -43,6 +43,13 @@ const CARD_DECK = [
         category: 'ATTACK',
         image: '/images/wood_sword_set.png',
         desc: '攻撃: 自分より上位なら単体(5000点差以内/成功率1/2)、下位なら全員順次判定(成功率1/2/指定回数攻撃) / 防御: 攻撃を無効(計3回で破棄/高得点者からの攻撃は無効化不可)'
+    },
+    {
+        id: 'shotgun',
+        name: 'ショットガン',
+        category: 'ATTACK',
+        image: '/images/shotgun.png',
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】50%'
     },
     {
         id: 'diamond_sword',
@@ -99,6 +106,7 @@ let cardSettings = {
     omamori_koban: true,
     wood_sword: true,
     wood_sword_set: true,
+    shotgun: true,
     diamond_sword: true,
     wood_shield: true,
     wood_shield_set: true,
@@ -707,6 +715,9 @@ io.on('connection', (socket) => {
             } else if (card.id === 'wood_sword' && targetPlayerId === 'ALL_LOWER') {
                 player.hand.splice(cardIndex, 1);
                 executeWoodSwordAttack(socket.id, targetPlayerId);
+            } else if (card.id === 'shotgun') {
+                player.hand.splice(cardIndex, 1);
+                executeShotgunAttack(socket.id, targetPlayerId);
             } else {
                 const target = gameState.players[targetPlayerId];
                 if (!target) {
@@ -947,8 +958,134 @@ function getBronzeShieldLowerHitRate(attackerScore, targetScore) {
 }
 
 /**
- * 青銅の盾: パターンA (自分以上で最も点差が近い相手1名 / 必中)
+ * ショットガン 攻撃処理 (防御カード貫通仕様)
  */
+function executeShotgunAttack(attackerId, targetTypeOrId) {
+    const attacker = gameState.players[attackerId];
+    if (!attacker) return;
+
+    if (targetTypeOrId === 'ALL_LOWER') {
+        const attackedPlayerIds = new Set();
+
+        function processNextLowerTarget() {
+            const currentPlayers = Object.values(gameState.players);
+            const currentAttackerScore = gameState.players[attackerId].score;
+
+            const lowerPlayers = currentPlayers.filter(p =>
+                p.score < currentAttackerScore &&
+                !attackedPlayerIds.has(p.id) &&
+                (!p.immunityCount || p.immunityCount <= 0) &&
+                !cannotSelectAsAttackTargetInRound1(attackerId, p.id)
+            );
+
+            if (lowerPlayers.length === 0) {
+                if (attackedPlayerIds.size === 0) {
+                    broadcastGameState(`P${attacker.number} が「ショットガン」を使用しましたが、対象となる下位プレイヤーがいませんでした。`);
+                }
+                return;
+            }
+
+            lowerPlayers.sort((a, b) => b.score - a.score);
+
+            const topScore = lowerPlayers[0].score;
+            const topGroup = lowerPlayers.filter(p => p.score === topScore);
+
+            const target = topGroup[Math.floor(Math.random() * topGroup.length)];
+            attackedPlayerIds.add(target.id);
+
+            if (skipIfImmuneToRound1CardEffect(target, attacker, '「ショットガン」攻撃')) {
+                setTimeout(processNextLowerTarget, 500);
+                return;
+            }
+
+            let baseHitRate = 0.5;
+            if (attacker.darknessTurns && attacker.darknessTurns > 0) {
+                baseHitRate = 0.25;
+            }
+            const isHit = Math.random() < baseHitRate;
+            let logPrefix = `P${attacker.number} の「ショットガン」攻撃 (対象: P${target.number})！ `;
+
+            if (!isHit) {
+                broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
+                setTimeout(processNextLowerTarget, 500);
+                return;
+            }
+
+            // 防御カード貫通判定（防御カードがあっても消費せず貫通）
+            let penetrateMsg = '';
+            if (target.defenseCard) {
+                penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
+            }
+
+            if (target.invincibleTurns && target.invincibleTurns > 0) {
+                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+                broadcastGameState(logPrefix + `命中！${penetrateMsg} しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃終了）`);
+                return;
+            }
+
+            if (target.steroidTurns && target.steroidTurns > 0) {
+                target.steroidRevealed = true;
+                broadcastGameState(logPrefix + `命中！${penetrateMsg} しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃終了）`);
+                return;
+            }
+
+            applyScoreChange(target, -3000);
+            target.immunityCount = 2;
+            broadcastGameState(logPrefix + `命中ヒット！${penetrateMsg} 得点-3000点！ (P${target.number}は選択不可状態になりました。攻撃終了)`);
+        }
+
+        processNextLowerTarget();
+        return;
+    }
+
+    const target = gameState.players[targetTypeOrId];
+    if (!target) return;
+
+    if (skipIfImmuneToRound1CardEffect(target, attacker, '「ショットガン」攻撃')) return;
+
+    const scoreDiff = target.score - attacker.score;
+    if (scoreDiff < 0 || scoreDiff > 5000) {
+        const socket = io.sockets.sockets.get(attackerId);
+        if (socket) {
+            socket.emit('errorMessage', '自分との得点差が0点以上+5000点以下のプレイヤーのみ攻撃対象に指定できます。');
+        }
+        return;
+    }
+
+    let baseHitRate = 0.5;
+    if (attacker.darknessTurns && attacker.darknessTurns > 0) {
+        baseHitRate = 0.25;
+    }
+    let logPrefix = `P${attacker.number} が P${target.number} に「ショットガン」で攻撃！ `;
+    const isHit = Math.random() < baseHitRate;
+
+    if (!isHit) {
+        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
+        return;
+    }
+
+    let penetrateMsg = '';
+    if (target.defenseCard) {
+        penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
+    }
+
+    if (target.invincibleTurns && target.invincibleTurns > 0) {
+        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
+        return;
+    }
+
+    if (target.steroidTurns && target.steroidTurns > 0) {
+        target.steroidRevealed = true;
+        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
+        return;
+    }
+
+    applyScoreChange(target, -3000);
+    target.immunityCount = 2;
+    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${penetrateMsg} 得点-3000点！ (P${target.number}は選択不可状態になりました)`);
+}
+
 function executeBronzeShieldClosestAttack(attackerId) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
@@ -977,7 +1114,6 @@ function executeBronzeShieldClosestAttack(attackerId) {
 
     let logPrefix = `P${attacker.number} が P${target.number} に「青銅の盾」で攻撃！ (必中) `;
 
-    // ① 防御カード消費
     if (target.defenseCard) {
         if (isSwordDefenseBlocked(target, attacker)) {
             broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -993,7 +1129,6 @@ function executeBronzeShieldClosestAttack(attackerId) {
         }
     }
 
-    // ② 無敵／ステロイド判定
     if (target.steroidTurns && target.steroidTurns > 0) {
         target.steroidRevealed = true;
         broadcastGameState(logPrefix + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
@@ -1010,9 +1145,6 @@ function executeBronzeShieldClosestAttack(attackerId) {
     broadcastGameState(logPrefix + `命中ヒット！ 得点-3000点！ (P${target.number}は選択不可状態になりました)`);
 }
 
-/**
- * 青銅の盾: パターンB (自分より得点が下の相手全員 / 単発中断タイプ)
- */
 function executeBronzeShieldGroupAttack(attackerId) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
@@ -1088,7 +1220,6 @@ function executeBronzeShieldGroupAttack(attackerId) {
             return;
         }
 
-        // ① 防御カード消費
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1104,7 +1235,6 @@ function executeBronzeShieldGroupAttack(attackerId) {
             }
         }
 
-        // ② 無敵／ステロイド判定
         if (target.steroidTurns && target.steroidTurns > 0) {
             target.steroidRevealed = true;
             broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃終了）`);
@@ -1205,7 +1335,6 @@ function executeWoodShieldGroupAttack(attackerId, groupType) {
             return;
         }
 
-        // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1340,7 +1469,6 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
             attackCountUsed++;
             cardObj.usesLeft -= 1;
 
-            // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
             if (target.defenseCard) {
                 if (isSwordDefenseBlocked(target, attacker)) {
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1437,7 +1565,6 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
             return;
         }
 
-        // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1572,7 +1699,6 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
             attackCountUsed++;
             cardObj.usesLeft -= 1;
 
-            // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
             if (target.defenseCard) {
                 if (isSwordDefenseBlocked(target, attacker)) {
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1699,7 +1825,6 @@ function executeStandardAttack(attackerId, targetId, cardId) {
         return;
     }
 
-    // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
     if (target.defenseCard) {
         if (isSwordDefenseBlocked(target, attacker)) {
             broadcastGameState(logPrefix + rateText + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1784,7 +1909,6 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
                 return;
             }
 
-            // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
             if (target.defenseCard) {
                 if (isSwordDefenseBlocked(target, attacker)) {
                     broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1849,7 +1973,6 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
         return;
     }
 
-    // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
     if (target.defenseCard) {
         if (isSwordDefenseBlocked(target, attacker)) {
             broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
@@ -1922,7 +2045,6 @@ function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onCom
 
         cardObj.usesLeft -= 1;
 
-        // --- 防御処理の優先順位: ① 防御カード消費 ➔ ② 無敵／ステロイド判定 ---
         if (target.defenseCard) {
             if (isSwordDefenseBlocked(target, attacker)) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);

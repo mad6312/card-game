@@ -592,6 +592,7 @@
             omamori_koban: 'お守り小判',
             wood_sword: '木の剣',
             wood_sword_set: '木の剣セット',
+            shotgun: 'ショットガン',
             diamond_sword: 'ダイヤの剣',
             wood_shield: '木の盾',
             wood_shield_set: '木の盾セット',
@@ -1564,7 +1565,7 @@
                             const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
                             targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                         }
-                    } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
+                    } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set' || card.id === 'shotgun') {
                         const allPlayers = Object.values(latestGameState.players);
                         const myScore = myPlayer.score;
 
@@ -1628,13 +1629,16 @@
                     }
                     html += `</div>`;
 
-                    html += `<div style="margin-bottom:8px;">`;
-                    if (hasDefense) {
-                        html += `<button class="btn" disabled style="background:#7f8c8d; width:100%;">防御にセット不可 (すでにセット中)</button>`;
-                    } else {
-                        html += `<button class="btn" style="background:#2980b9; width:100%;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}', actionTarget: 'DEFENSE' }); closeDropActionModal();">防御にセット</button>`;
+                    // ショットガンは防御セット不可
+                    if (card.id !== 'shotgun') {
+                        html += `<div style="margin-bottom:8px;">`;
+                        if (hasDefense) {
+                            html += `<button class="btn" disabled style="background:#7f8c8d; width:100%;">防御にセット不可 (すでにセット中)</button>`;
+                        } else {
+                            html += `<button class="btn" style="background:#2980b9; width:100%;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}', actionTarget: 'DEFENSE' }); closeDropActionModal();">防御にセット</button>`;
+                        }
+                        html += `</div>`;
                     }
-                    html += `</div>`;
                 }
             } else if (source === 'DEFENSE') {
                 let targetOptionsHtml = '';
