@@ -888,7 +888,7 @@
                                 </div>
                             </div>
                         `;
-                    } else if (isMe) {
+                    } else if (isMe || p.armorRevealed) {
                         statusBadge += `
                             <div class="status-badge-wrapper">
                                 <img src="/images/invincible_armor.png" class="status-badge-img" alt="無敵アーマー">
@@ -902,7 +902,7 @@
                     }
                 }
 
-                if (p.steroidTurns > 0 && isMe) {
+                if (p.steroidTurns > 0 && (isMe || p.steroidRevealed)) {
                     statusBadge += `
                         <div class="status-badge-wrapper">
                             <img src="/images/steroid.png" class="status-badge-img" alt="ステロイド">

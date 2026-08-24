@@ -339,6 +339,12 @@ function handleBuffExpire(player, buffType) {
     const cardName = buffType === 'ARMOR' ? '無敵アーマー' : 'ステロイド';
     const prevMyScore = player.score;
 
+    if (buffType === 'ARMOR') {
+        player.armorRevealed = false;
+    } else {
+        player.steroidRevealed = false;
+    }
+
     applyScoreChange(player, 1000);
     const newMyScore = player.score;
 
@@ -413,12 +419,14 @@ function proceedToNextTurn() {
             p.invincibleTurns -= 1;
             if (p.invincibleTurns === 0) {
                 p.invincibleSource = null;
+                p.armorRevealed = false;
                 handleBuffExpire(p, 'ARMOR');
             }
         }
         if (p.steroidTurns > 0) {
             p.steroidTurns -= 1;
             if (p.steroidTurns === 0) {
+                p.steroidRevealed = false;
                 handleBuffExpire(p, 'STERIOD');
             }
         }
@@ -469,6 +477,10 @@ io.on('connection', (socket) => {
             draftResolved: false,
             immunityCount: 0,
             invincibleTurns: 0,
+            invincibleSource: null,
+            armorRevealed: false,
+            steroidTurns: 0,
+            steroidRevealed: false,
             darknessTurns: 0
         };
 
@@ -597,6 +609,7 @@ io.on('connection', (socket) => {
         } else if (card.id === 'invincible_armor') {
             player.invincibleTurns = 4;
             player.invincibleSource = 'ARMOR';
+            player.armorRevealed = false;
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「無敵アーマー」を使用しました。4ターンの間「無敵状態」になります。`));
@@ -606,6 +619,7 @@ io.on('connection', (socket) => {
             executeDarkMatter(socket.id);
         } else if (card.id === 'steroid') {
             player.steroidTurns = 4;
+            player.steroidRevealed = false;
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「ステロイド」を使用しました。4ターンの間「ステロイド状態」になります。`));
@@ -999,10 +1013,12 @@ function executeWoodShieldGroupAttack(attackerId, groupType) {
         }
 
         if (target.steroidTurns && target.steroidTurns > 0) {
+            target.steroidRevealed = true;
             broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
             return;
         }
         if (target.invincibleTurns && target.invincibleTurns > 0) {
+            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
             return;
         }
@@ -1133,12 +1149,14 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
             }
 
             if (target.steroidTurns && target.steroidTurns > 0) {
+                target.steroidRevealed = true;
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
                 onComplete();
                 return;
             }
 
             if (target.invincibleTurns && target.invincibleTurns > 0) {
+                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
                 onComplete();
                 return;
@@ -1233,12 +1251,14 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
         }
 
         if (target.invincibleTurns && target.invincibleTurns > 0) {
+            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
             onComplete();
             return;
         }
 
         if (target.steroidTurns && target.steroidTurns > 0) {
+            target.steroidRevealed = true;
             broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
             onComplete();
             return;
@@ -1361,12 +1381,14 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
             }
 
             if (target.steroidTurns && target.steroidTurns > 0) {
+                target.steroidRevealed = true;
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
                 onComplete();
                 return;
             }
 
             if (target.invincibleTurns && target.invincibleTurns > 0) {
+                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
                 onComplete();
                 return;
@@ -1415,6 +1437,9 @@ function executeDiamondSword(casterSocketId) {
         const isImmune = target.immunityCount && target.immunityCount > 0;
 
         if (isInvincible || isSteroid || isImmune) {
+            if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+            if (isSteroid) target.steroidRevealed = true;
+
             let defMsg = '';
             if (target.defenseCard) {
                 target.defenseCard = null;
@@ -1482,11 +1507,13 @@ function executeStandardAttack(attackerId, targetId, cardId) {
     }
 
     if (target.invincibleTurns && target.invincibleTurns > 0) {
+        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
         broadcastGameState(logPrefix + rateText + `命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
         return;
     }
 
     if (isSteroid) {
+        target.steroidRevealed = true;
         broadcastGameState(logPrefix + rateText + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
         return;
     }
@@ -1565,11 +1592,13 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
             }
 
             if (target.invincibleTurns && target.invincibleTurns > 0) {
+                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 broadcastGameState(logPrefix + `命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
                 return;
             }
 
             if (isSteroid) {
+                target.steroidRevealed = true;
                 broadcastGameState(logPrefix + `命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
                 return;
             }
@@ -1628,11 +1657,13 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
     }
 
     if (target.invincibleTurns && target.invincibleTurns > 0) {
+        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
         broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
         return;
     }
 
     if (isSteroid) {
+        target.steroidRevealed = true;
         broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
         return;
     }
@@ -1700,12 +1731,14 @@ function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onCom
         }
 
         if (target.invincibleTurns && target.invincibleTurns > 0) {
+            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「無敵状態」のため攻撃が無効化されました！`);
             setTimeout(doNextAttack, 500);
             return;
         }
 
         if (isSteroid) {
+            target.steroidRevealed = true;
             broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし P${target.number} は「ステロイド状態」のため攻撃が無効化されました！`);
             setTimeout(doNextAttack, 500);
             return;
@@ -1763,7 +1796,12 @@ function executeDisasterAttack(casterSocketId) {
 
             if (isSteroid) {
                 player.steroidTurns = 0;
+                player.steroidRevealed = false;
                 return;
+            }
+
+            if (isInvincible && player.invincibleSource === 'ARMOR') {
+                player.armorRevealed = true;
             }
 
             if (!isInvincible && !isImmune) {
@@ -1860,6 +1898,8 @@ function executeSmokeScreen(casterSocketId) {
             const isSteroid = target.steroidTurns && target.steroidTurns > 0;
 
             if (isInvincible || isSteroid) {
+                if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+                if (isSteroid) target.steroidRevealed = true;
                 affectedNames.push(`P${target.number}(無効)`);
                 return;
             }
