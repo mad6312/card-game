@@ -59,6 +59,13 @@ const CARD_DECK = [
         desc: '【対象】1位、および1位と得点差が±1000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札と防御カードをすべて捨て、5000点ダメージを与える。（必中/無敵・ステロイド・選択不可は防御破棄のみ）'
     },
     {
+        id: 'earthquake',
+        name: '地震',
+        category: 'ATTACK',
+        image: '/images/earthquake.png',
+        desc: '【使用時】自分と同点以上の相手全員に1000点/3000点(各50%)ダメージを与える。\n【追加効果】対象の手札・防御カードをすべて破棄する。'
+    },
+    {
         id: 'omamori_koban',
         name: 'お守り小判',
         category: 'SPECIAL',
@@ -108,6 +115,7 @@ let cardSettings = {
     wood_sword_set: true,
     shotgun: true,
     diamond_sword: true,
+    earthquake: true,
     wood_shield: true,
     wood_shield_set: true,
     bronze_shield: true,
@@ -401,7 +409,7 @@ function handleBuffExpire(player, buffType) {
         logMsg += ` ペナルティ結果: ${penalizedNames.join(', ')}`;
     }
 
-    broadcastGameState(logMsg);
+    return logMsg;
 }
 
 /**
@@ -430,20 +438,23 @@ function proceedToNextTurn() {
     });
 
     // 3. 無敵アーマー / ステロイド：いずれかのプレイヤーが1回ターンを終了したタイミングで残ターンを「-1」
+    const expireLogs = [];
     Object.values(gameState.players).forEach(p => {
         if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
             p.invincibleTurns -= 1;
             if (p.invincibleTurns === 0) {
                 p.invincibleSource = null;
                 p.armorRevealed = false;
-                handleBuffExpire(p, 'ARMOR');
+                const msg = handleBuffExpire(p, 'ARMOR');
+                if (msg) expireLogs.push(msg);
             }
         }
         if (p.steroidTurns > 0) {
             p.steroidTurns -= 1;
             if (p.steroidTurns === 0) {
                 p.steroidRevealed = false;
-                handleBuffExpire(p, 'STERIOD');
+                const msg = handleBuffExpire(p, 'STERIOD');
+                if (msg) expireLogs.push(msg);
             }
         }
     });
@@ -470,7 +481,9 @@ function proceedToNextTurn() {
         }
     }
 
-    broadcastGameState(`P${gameState.players[gameState.currentTurnPlayerId].number} のターンになりました。`);
+    let finalLog = expireLogs.length > 0 ? expireLogs.join('\n') + '\n' : '';
+    finalLog += `P${gameState.players[gameState.currentTurnPlayerId].number} のターンになりました。`;
+    broadcastGameState(finalLog);
 }
 
 let skipBonusModal = true;
@@ -622,6 +635,9 @@ io.on('connection', (socket) => {
         } else if (card.id === 'diamond_sword') {
             player.hand.splice(cardIndex, 1);
             executeDiamondSword(socket.id);
+        } else if (card.id === 'earthquake') {
+            player.hand.splice(cardIndex, 1);
+            executeEarthquake(socket.id);
         } else if (card.id === 'invincible_armor') {
             player.invincibleTurns = 4;
             player.invincibleSource = 'ARMOR';
@@ -958,8 +974,61 @@ function getBronzeShieldLowerHitRate(attackerScore, targetScore) {
 }
 
 /**
- * ショットガン 攻撃処理 (防御カード貫通仕様)
+ * 地震 発動処理 (カットイン演出付き)
  */
+function executeEarthquake(casterSocketId) {
+    const caster = gameState.players[casterSocketId];
+    if (!caster) return;
+
+    io.emit('showCutIn', {
+        title: '地震発動！',
+        imagePath: '/images/earthquake.png'
+    });
+
+    setTimeout(() => {
+        const myScore = caster.score;
+        const allPlayers = Object.values(gameState.players);
+
+        const targets = allPlayers.filter(p => p.id !== casterSocketId && p.score >= myScore);
+
+        if (targets.length === 0) {
+            broadcastGameState(`P${caster.number} が「地震」を発動しましたが、同点以上の相手が存在しないため不発に終わりました。`);
+            return;
+        }
+
+        const affectedLogs = [];
+
+        targets.forEach(target => {
+            if (isImmuneToRound1CardEffect(target.id, casterSocketId)) {
+                affectedLogs.push(`P${target.number}(1巡目効果無効)`);
+                return;
+            }
+
+            const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
+            const isSteroid = target.steroidTurns && target.steroidTurns > 0;
+
+            if (isInvincible || isSteroid) {
+                if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+                if (isSteroid) target.steroidRevealed = true;
+                const stateName = isInvincible ? '無敵' : 'ステロイド';
+                affectedLogs.push(`P${target.number}(${stateName}ガード)`);
+                return;
+            }
+
+            const damage = Math.random() < 0.5 ? -1000 : -3000;
+            applyScoreChange(target, damage);
+
+            target.hand = [];
+            target.defenseCard = null;
+            target.immunityCount = 2;
+
+            affectedLogs.push(`P${target.number}(${damage}点・手札防御全破棄・選択不可2T)`);
+        });
+
+        broadcastGameState(`P${caster.number} が「地震」を発動！ (対象: ${affectedLogs.join(' / ')})`);
+    }, 2000);
+}
+
 function executeShotgunAttack(attackerId, targetTypeOrId) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
@@ -1011,7 +1080,6 @@ function executeShotgunAttack(attackerId, targetTypeOrId) {
                 return;
             }
 
-            // 防御カード貫通判定（防御カードがあっても消費せず貫通）
             let penetrateMsg = '';
             if (target.defenseCard) {
                 penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
