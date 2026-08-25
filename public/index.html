@@ -138,6 +138,7 @@
         }
 
         .player-box {
+            position: relative;
             background: rgba(26, 37, 47, 0.85);
             border: 2px solid #34495e;
             border-radius: 8px;
@@ -151,6 +152,22 @@
         .player-box.active {
             border-color: #f1c40f;
             box-shadow: 0 0 12px #f1c40f;
+        }
+
+        .acted-badge {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background: #334155;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 7px;
+            border-radius: 10px;
+            border: 1px solid #64748b;
+            pointer-events: none;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .table-center {
@@ -608,6 +625,7 @@
         let lastKnownScoreState = {};
         let scoreDisplayTimers = {};
         let scoreExpiryTimeoutId = null;
+        let isTimeBombModalTriggeredByEndTurn = false;
 
         function isLaterPlayerInRound1(actorId, targetId) {
             if (!latestGameState || latestGameState.round !== 1) return false;
@@ -676,6 +694,10 @@
 
         socket.on('transferTimeBombResult', (data) => {
             closeTimeBombModal();
+            if (isTimeBombModalTriggeredByEndTurn) {
+                isTimeBombModalTriggeredByEndTurn = false;
+                socket.emit('endTurn');
+            }
         });
 
         function renderCardSwitches() {
@@ -930,6 +952,9 @@
                 const box = document.createElement('div');
                 box.className = `player-box ${isTurn ? 'active' : ''}`;
 
+                const hasActed = latestGameState && latestGameState.actedPlayerIds && latestGameState.actedPlayerIds.includes(p.id);
+                const actedBadgeHtml = hasActed ? `<div class="acted-badge">済</div>` : '';
+
                 let defInfo = '<span style="color:#7f8c8d;">なし</span>';
                 if (p.defenseCard) {
                     const card = p.defenseCard.card;
@@ -1061,6 +1086,7 @@
                     </div>
                     <div>手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>
                     ${handHtml}
+                    ${actedBadgeHtml}
                 `;
 
                 targetContainer.appendChild(box);
@@ -1118,6 +1144,8 @@
             const myPlayer = latestGameState.players[myId];
             if (!myPlayer || myPlayer.timeBombTurns <= 0) return;
 
+            isTimeBombModalTriggeredByEndTurn = isWarningFromEndTurn;
+
             const modal = document.getElementById('time-bomb-modal');
             const controls = document.getElementById('time-bomb-modal-controls');
             controls.innerHTML = '';
@@ -1143,8 +1171,12 @@
             } else {
                 let optionsHtml = '';
                 validTargets.forEach(t => {
-                    optionsHtml += `<option value="${t.id}">${t.name} (点差: ${Math.abs(myPlayer.score - t.score)}点)</option>`;
+                    const diff = t.score - myPlayer.score;
+                    const signStr = diff > 0 ? `+${diff}` : (diff < 0 ? `${diff}` : '±0');
+                    optionsHtml += `<option value="${t.id}">${t.name} (点差: ${signStr}点)</option>`;
                 });
+
+                const submitBtnText = isWarningFromEndTurn ? '50%の確率で受け渡してターン終了' : '50%の確率で受け渡す';
 
                 controls.innerHTML = `
                     <div style="margin-bottom:12px; text-align:left; background:#1a252f; padding:10px; border-radius:6px;">
@@ -1153,7 +1185,7 @@
                             ${optionsHtml}
                         </select>
                     </div>
-                    <button class="btn" style="background:#e74c3c; width:100%; font-weight:bold; margin-bottom:6px;" onclick="executeTransferTimeBomb()">50%の確率で受け渡す</button>
+                    <button class="btn" style="background:#e74c3c; width:100%; font-weight:bold; margin-bottom:6px;" onclick="executeTransferTimeBomb()">${submitBtnText}</button>
                     ${isWarningFromEndTurn ? `<button class="btn" style="background:#2980b9; width:100%; margin-bottom:6px;" onclick="closeTimeBombModal(); socket.emit('endTurn');">無視してターン終了</button>` : ''}
                     <button class="btn" style="background:#7f8c8d; width:100%;" onclick="closeTimeBombModal()">閉じる</button>
                 `;
@@ -1539,11 +1571,10 @@
                     });
 
                     const hitCandidates = validCandidates.filter(p => Math.abs(myScore - p.score) < 10000);
-                    const candidates = selectEl.value === 'EQUAL_OR_HIGHER'
-                        ? hitCandidates.filter(p => p.score >= myScore)
-                        : hitCandidates.filter(p => p.score < myScore);
+                    const equalOrHigher = hitCandidates.filter(p => p.score >= myScore);
+                    const lower = hitCandidates.filter(p => p.score < myScore);
 
-                    const { rateDetailStr } = calculateWoodShieldGroupHitRates(candidates, myScore, attackCount, isDarkness);
+                    const { rateDetailStr } = calculateWoodShieldGroupHitRates(equalOrHigher, myScore, attackCount, isDarkness);
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                     return;
                 }
@@ -1756,6 +1787,19 @@
                 } else if (card.id === 'disaster') {
                     html += `<button class="btn" style="background:#c0392b; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">大災害を発動する</button>`;
                 } else if (card.id === 'diamond_sword') {
+                    const allPlayers = Object.values(latestGameState.players);
+                    const maxScore = Math.max(...allPlayers.map(p => p.score));
+                    const targetPlayers = allPlayers.filter(p => {
+                        if (p.id !== myId && isLaterPlayerInRound1(myId, p.id)) return false;
+                        return Math.abs(maxScore - p.score) <= 1000;
+                    });
+
+                    if (targetPlayers.length === 0) {
+                        html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin-bottom:8px;">※現在、対象となるプレイヤーが存在しません</div>`;
+                    } else {
+                        const targetNames = targetPlayers.map(p => (p.id === myId ? `${p.name}(あなた)` : p.name)).join(', ');
+                        html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">攻撃対象 (1位±1000点): <b>${targetNames}</b></div>`;
+                    }
                     html += `<button class="btn" style="background:#0ea5e9; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダイヤの剣を発動する</button>`;
                 } else if (card.id === 'earthquake') {
                     const allPlayers = Object.values(latestGameState.players);
@@ -1771,10 +1815,39 @@
                 } else if (card.id === 'invincible_armor') {
                     html += `<button class="btn" style="background:#f1c40f; color:#000; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">無敵アーマーを使用する</button>`;
                 } else if (card.id === 'dark_matter') {
+                    const allPlayers = Object.values(latestGameState.players);
+                    const prevMyScore = myPlayer.score;
+                    const newMyScore = prevMyScore + 5000;
+
+                    const penaltyTargets = allPlayers.filter(p => {
+                        if (p.id === myId) return false;
+                        if (isLaterPlayerInRound1(myId, p.id)) return false;
+                        if (p.invincibleTurns > 0 || (p.immunityCount && p.immunityCount > 0)) return false;
+                        const isConditionA = (p.score === prevMyScore);
+                        const isConditionB = (p.score > prevMyScore && newMyScore >= p.score);
+                        return isConditionA || isConditionB;
+                    });
+
+                    if (penaltyTargets.length === 0) {
+                        html += `<div style="color:#94a3b8; font-size:0.85em; margin-bottom:8px;">※使用時に条件を満たす相手はいません（ペナルティなし）</div>`;
+                    } else {
+                        const targetNames = penaltyTargets.map(p => p.name).join(', ');
+                        html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">ペナルティ対象(50%): <b>${targetNames}</b></div>`;
+                    }
                     html += `<button class="btn" style="background:#8e44ad; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダークマターを使用する</button>`;
                 } else if (card.id === 'steroid') {
                     html += `<button class="btn" style="background:#e67e22; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ステロイドを使用する</button>`;
                 } else if (card.id === 'smoke_screen') {
+                    const allPlayers = Object.values(latestGameState.players);
+                    const myScore = myPlayer.score;
+                    const higherTargets = allPlayers.filter(p => p.id !== myId && p.score >= myScore && !isLaterPlayerInRound1(myId, p.id));
+
+                    if (higherTargets.length === 0) {
+                        html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin-bottom:8px;">※同点以上の相手がいないため、自身に効果が発動します (-1000点＆暗闇)</div>`;
+                    } else {
+                        const targetNames = higherTargets.map(p => p.name).join(', ');
+                        html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">効果対象 (同点以上): <b>${targetNames}</b></div>`;
+                    }
                     html += `<button class="btn" style="background:#7f8c8d; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">煙幕を使用する</button>`;
                 } else {
                     let targetOptionsHtml = '';
