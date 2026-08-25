@@ -275,6 +275,7 @@
             flex-wrap: wrap;
         }
 
+        /* 手札ホバー時の安定化 */
         .hand-card-wrapper {
             position: relative;
             display: inline-block;
@@ -547,6 +548,20 @@
             </div>
         </div>
 
+        <div id="time-bomb-modal" class="modal">
+            <div class="modal-content" style="text-align:center; max-width:420px;">
+                <h3 style="margin-top:0; color:#e74c3c;">💣 時限爆弾の受け渡し</h3>
+                <div style="margin: 10px 0;">
+                    <img src="/images/time_bomb.png"
+                        style="width:100px; height:145px; object-fit:contain; border-radius:6px;" alt="時限爆弾">
+                    <p style="font-size:0.85em; color:#cbd5e1; margin:8px 0;">
+                        自分との得点差が±3000点以内の相手1人に、50%の確率で時限爆弾を押し付けます。
+                    </p>
+                </div>
+                <div id="time-bomb-modal-controls" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+
         <div id="drop-action-modal" class="modal">
             <div class="modal-content" style="text-align:center; max-width:420px;">
                 <h3 id="drop-modal-title" style="margin-top:0; color:#f1c40f;">カード操作</h3>
@@ -591,6 +606,8 @@
         let latestGameState = null;
         let currentCardSettings = {};
 
+        // 得点変動演出のタイマー・状態管理
+        let lastKnownScoreState = {};
         let scoreDisplayTimers = {};
         let scoreExpiryTimeoutId = null;
 
@@ -609,6 +626,7 @@
             shotgun: 'ショットガン',
             diamond_sword: 'ダイヤの剣',
             earthquake: '地震',
+            time_bomb: '時限爆弾',
             wood_shield: '木の盾',
             wood_shield_set: '木の盾セット',
             bronze_shield: '青銅の盾',
@@ -640,6 +658,7 @@
 
         socket.on('showCutIn', (data) => {
             closeDropActionModal();
+            closeTimeBombModal();
 
             const overlay = document.getElementById('cutin-overlay');
             const img = document.getElementById('cutin-image');
@@ -653,6 +672,10 @@
             setTimeout(() => {
                 overlay.classList.add('hidden');
             }, 2500);
+        });
+
+        socket.on('transferTimeBombResult', (data) => {
+            closeTimeBombModal();
         });
 
         function renderCardSwitches() {
@@ -751,11 +774,84 @@
                 logBox.innerText = data.log + '\n' + logBox.innerText;
             }
 
+            const now = Date.now();
+            let shortestRemaining = Infinity;
+
+            // 新たな得点変動を受信した場合のみタイマーを設定
+            Object.values(data.players).forEach(p => {
+                const last = lastKnownScoreState[p.id];
+                if (p.scoreChange && p.scoreChange !== 0 && (!last || last.score !== p.score || last.scoreChange !== p.scoreChange)) {
+                    scoreDisplayTimers[p.id] = {
+                        prevScore: p.prevScore,
+                        change: p.scoreChange,
+                        targetScore: p.score,
+                        expiresAt: now + 3500
+                    };
+                }
+                lastKnownScoreState[p.id] = {
+                    score: p.score,
+                    prevScore: p.prevScore,
+                    scoreChange: p.scoreChange
+                };
+
+                const info = scoreDisplayTimers[p.id];
+                if (info && info.expiresAt > now) {
+                    const rem = info.expiresAt - now;
+                    if (rem < shortestRemaining) shortestRemaining = rem;
+                }
+            });
+
+            if (scoreExpiryTimeoutId) clearTimeout(scoreExpiryTimeoutId);
+            if (shortestRemaining !== Infinity) {
+                scoreExpiryTimeoutId = setTimeout(updateScoreTextsOnly, shortestRemaining + 50);
+            }
+
             updatePlayersUI(data.players, data.currentTurnPlayerId);
             updateTurnControls(data);
 
             renderDebugScorePanel(data.players);
         });
+
+        function getPlayerScoreHtml(p, now) {
+            const timerInfo = scoreDisplayTimers[p.id];
+            if (timerInfo && now < timerInfo.expiresAt) {
+                const color = timerInfo.change > 0 ? '#2ecc71' : '#e74c3c';
+                const sign = timerInfo.change > 0 ? '+' : '';
+                return `持ち点: ${timerInfo.prevScore.toLocaleString()}点 <span style="color: ${color}; font-weight: bold;">${sign}${timerInfo.change.toLocaleString()}点</span> → ${timerInfo.targetScore.toLocaleString()}点`;
+            }
+            return `持ち点: ${p.score.toLocaleString()}点`;
+        }
+
+        // 演出終了時、DOM全体を破棄せずスコアテキストのみをピンポイントで更新
+        function updateScoreTextsOnly() {
+            if (!latestGameState) return;
+            const now = Date.now();
+            let hasActiveTimer = false;
+            let shortestRemaining = Infinity;
+
+            Object.values(latestGameState.players).forEach(p => {
+                const scoreEl = document.getElementById(`player-score-${p.id}`);
+                if (scoreEl) {
+                    scoreEl.innerHTML = getPlayerScoreHtml(p, now);
+                }
+
+                const info = scoreDisplayTimers[p.id];
+                if (info) {
+                    if (now < info.expiresAt) {
+                        hasActiveTimer = true;
+                        const rem = info.expiresAt - now;
+                        if (rem < shortestRemaining) shortestRemaining = rem;
+                    } else {
+                        delete scoreDisplayTimers[p.id];
+                    }
+                }
+            });
+
+            if (hasActiveTimer && shortestRemaining !== Infinity) {
+                if (scoreExpiryTimeoutId) clearTimeout(scoreExpiryTimeoutId);
+                scoreExpiryTimeoutId = setTimeout(updateScoreTextsOnly, shortestRemaining + 50);
+            }
+        }
 
         function renderDebugScorePanel(players) {
             const container = document.getElementById('debug-score-list');
@@ -804,40 +900,6 @@
 
         function updatePlayersUI(players, currentTurnPlayerId) {
             const now = Date.now();
-            let shortestRemaining = Infinity;
-
-            Object.values(players).forEach(p => {
-                if (p.scoreChange && p.scoreChange !== 0) {
-                    scoreDisplayTimers[p.id] = {
-                        prevScore: p.prevScore,
-                        change: p.scoreChange,
-                        targetScore: p.score,
-                        expiresAt: now + 3500
-                    };
-                }
-            });
-
-            Object.keys(scoreDisplayTimers).forEach(id => {
-                const info = scoreDisplayTimers[id];
-                if (info && info.expiresAt > now) {
-                    const rem = info.expiresAt - now;
-                    if (rem < shortestRemaining) {
-                        shortestRemaining = rem;
-                    }
-                } else {
-                    delete scoreDisplayTimers[id];
-                }
-            });
-
-            if (shortestRemaining !== Infinity) {
-                if (scoreExpiryTimeoutId) clearTimeout(scoreExpiryTimeoutId);
-                scoreExpiryTimeoutId = setTimeout(() => {
-                    if (latestGameState) {
-                        updatePlayersUI(latestGameState.players, latestGameState.currentTurnPlayerId);
-                    }
-                }, shortestRemaining + 50);
-            }
-
             const sorted = Object.values(players).sort((a, b) => b.score - a.score);
             const playerList = Object.values(players).sort((a, b) => a.number - b.number);
 
@@ -915,16 +977,7 @@
                     handHtml += `</div>`;
                 }
 
-                let scoreDisplayHtml = '';
-                const timerInfo = scoreDisplayTimers[p.id];
-
-                if (timerInfo && now < timerInfo.expiresAt) {
-                    const color = timerInfo.change > 0 ? '#2ecc71' : '#e74c3c';
-                    const sign = timerInfo.change > 0 ? '+' : '';
-                    scoreDisplayHtml = `持ち点: ${timerInfo.prevScore.toLocaleString()}点 <span style="color: ${color}; font-weight: bold;">${sign}${timerInfo.change.toLocaleString()}点</span> → ${timerInfo.targetScore.toLocaleString()}点`;
-                } else {
-                    scoreDisplayHtml = `持ち点: ${p.score.toLocaleString()}点`;
-                }
+                let scoreDisplayHtml = getPlayerScoreHtml(p, now);
 
                 let statusBadge = '';
                 if (p.immunityCount > 0) {
@@ -981,12 +1034,27 @@
                         </div>
                     `;
                 }
+
+                if (p.timeBombTurns > 0) {
+                    const clickAttr = (isMe && isTurn) ? `onclick="openTimeBombModal(false)" style="cursor: pointer;"` : '';
+                    statusBadge += `
+                        <div class="status-badge-wrapper" ${clickAttr}>
+                            <img src="/images/time_bomb.png" class="status-badge-img" alt="時限爆弾">
+                            <span class="status-badge-count">${p.timeBombTurns}</span>
+                            <div class="card-tooltip">
+                                <div style="font-weight: bold; color: #e74c3c; margin-bottom: 3px;">時限爆弾</div>
+                                <div>時限爆弾：カウントが0になると、爆発して6000点ダメージを受け、さらに手札・防御カードをすべて失う。<br>自分との得点差が3000点以内の相手に受け渡すことができる(成功率50%)。</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
                 box.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <strong>${posName} P${p.number} ${isMe ? '(あなた)' : ''} ${isTurn ? '★' : ''}${statusBadge}</strong>
                         <span style="color:#f1c40f; font-weight:bold;"> ${rank}位</span>
                     </div>
-                    <div style="font-size: 1.1em; font-weight: bold; margin: 3px 0; color: #38bdf8;">
+                    <div class="player-score" id="player-score-${p.id}" style="font-size: 1.1em; font-weight: bold; margin: 3px 0; color: #38bdf8;">
                         ${scoreDisplayHtml}
                     </div>
                     <div>手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>
@@ -1021,6 +1089,88 @@
             }
         });
 
+        function handleEndTurnClick() {
+            if (!latestGameState) return;
+            const myPlayer = latestGameState.players[myId];
+            if (!myPlayer) return;
+
+            if (myPlayer.timeBombTurns > 0 && !myPlayer.bombTransferAttempted) {
+                const validTargets = Object.values(latestGameState.players).filter(p => {
+                    if (p.id === myId) return false;
+                    const diff = Math.abs(myPlayer.score - p.score);
+                    const isProtected = (p.invincibleTurns > 0) || (p.steroidTurns > 0);
+                    return diff <= 3000 && !isProtected;
+                });
+
+                if (validTargets.length > 0) {
+                    openTimeBombModal(true);
+                    return;
+                }
+            }
+
+            socket.emit('endTurn');
+        }
+
+        function openTimeBombModal(isWarningFromEndTurn = false) {
+            if (!latestGameState || !myId) return;
+            const myPlayer = latestGameState.players[myId];
+            if (!myPlayer || myPlayer.timeBombTurns <= 0) return;
+
+            const modal = document.getElementById('time-bomb-modal');
+            const controls = document.getElementById('time-bomb-modal-controls');
+            controls.innerHTML = '';
+
+            const validTargets = Object.values(latestGameState.players).filter(p => {
+                if (p.id === myId) return false;
+                const diff = Math.abs(myPlayer.score - p.score);
+                const isProtected = (p.invincibleTurns > 0) || (p.steroidTurns > 0);
+                return diff <= 3000 && !isProtected;
+            });
+
+            if (myPlayer.bombTransferAttempted) {
+                controls.innerHTML = `
+                    <div style="color:#e74c3c; font-weight:bold; margin-bottom:12px;">受け渡しに失敗しました（このターンは再試行できません）</div>
+                    <button class="btn" style="background:#7f8c8d; width:100%;" onclick="closeTimeBombModal()">閉じる</button>
+                `;
+            } else if (validTargets.length === 0) {
+                controls.innerHTML = `
+                    <div style="color:#e74c3c; font-weight:bold; margin-bottom:12px;">受け渡し可能な相手が存在しません（±3000点以内・無敵除く）</div>
+                    ${isWarningFromEndTurn ? `<button class="btn" style="background:#2980b9; width:100%; margin-bottom:6px;" onclick="closeTimeBombModal(); socket.emit('endTurn');">無視してターン終了</button>` : ''}
+                    <button class="btn" style="background:#7f8c8d; width:100%;" onclick="closeTimeBombModal()">閉じる</button>
+                `;
+            } else {
+                let optionsHtml = '';
+                validTargets.forEach(t => {
+                    optionsHtml += `<option value="${t.id}">${t.name} (点差: ${Math.abs(myPlayer.score - t.score)}点)</option>`;
+                });
+
+                controls.innerHTML = `
+                    <div style="margin-bottom:12px; text-align:left; background:#1a252f; padding:10px; border-radius:6px;">
+                        <label style="display:block; margin-bottom:4px; font-weight:bold;">受け渡し先プレイヤー:</label>
+                        <select id="time-bomb-target-select" style="width:100%; padding:6px; background:#334155; color:#fff; border:1px solid #475569; border-radius:4px;">
+                            ${optionsHtml}
+                        </select>
+                    </div>
+                    <button class="btn" style="background:#e74c3c; width:100%; font-weight:bold; margin-bottom:6px;" onclick="executeTransferTimeBomb()">50%の確率で受け渡す</button>
+                    ${isWarningFromEndTurn ? `<button class="btn" style="background:#2980b9; width:100%; margin-bottom:6px;" onclick="closeTimeBombModal(); socket.emit('endTurn');">無視してターン終了</button>` : ''}
+                    <button class="btn" style="background:#7f8c8d; width:100%;" onclick="closeTimeBombModal()">閉じる</button>
+                `;
+            }
+
+            modal.style.display = 'flex';
+        }
+
+        function closeTimeBombModal() {
+            document.getElementById('time-bomb-modal').style.display = 'none';
+        }
+
+        function executeTransferTimeBomb() {
+            const selectEl = document.getElementById('time-bomb-target-select');
+            if (!selectEl) return;
+            const targetPlayerId = selectEl.value;
+            socket.emit('transferTimeBomb', { targetPlayerId });
+        }
+
         function updateTurnControls(data) {
             const roundInfo = document.getElementById('round-info');
             const endTurnBtnContainer = document.getElementById('center-end-turn-btn');
@@ -1052,7 +1202,7 @@
                 if (centerStatus) centerStatus.innerText = '手札のカードをクリックして使用';
 
                 endTurnBtnContainer.innerHTML = `
-                    <button class="btn" style="background:#2980b9; height:100%; white-space:nowrap; margin:0; padding:0 12px; font-weight:bold;" onclick="socket.emit('endTurn')">
+                    <button class="btn" style="background:#2980b9; height:100%; white-space:nowrap; margin:0; padding:0 12px; font-weight:bold;" onclick="handleEndTurnClick()">
                         ターン終了
                     </button>
                 `;

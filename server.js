@@ -66,6 +66,13 @@ const CARD_DECK = [
         desc: '【使用時】自分と同点以上の相手全員に1000点/3000点(各50%)ダメージを与える。\n【追加効果】対象の手札・防御カードをすべて破棄する。'
     },
     {
+        id: 'time_bomb',
+        name: '時限爆弾',
+        category: 'SPECIAL',
+        image: '/images/time_bomb.png',
+        desc: '【ドロー時】即時発動(+1000点)。8ターン後に爆発(-6000点/手札防御全破棄/選択不可2T)。自ターン開始毎+1000点。±3000点差の相手に50%で受け渡し可能。無敵・ステロイドで消滅。'
+    },
+    {
         id: 'omamori_koban',
         name: 'お守り小判',
         category: 'SPECIAL',
@@ -116,6 +123,7 @@ let cardSettings = {
     shotgun: true,
     diamond_sword: true,
     earthquake: true,
+    time_bomb: true,
     wood_shield: true,
     wood_shield_set: true,
     bronze_shield: true,
@@ -437,7 +445,7 @@ function proceedToNextTurn() {
         }
     });
 
-    // 3. 無敵アーマー / ステロイド：いずれかのプレイヤーが1回ターンを終了したタイミングで残ターンを「-1」
+    // 3. 無敵アーマー / ステロイド / 時限爆弾 タイマー減算
     const expireLogs = [];
     Object.values(gameState.players).forEach(p => {
         if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
@@ -455,6 +463,21 @@ function proceedToNextTurn() {
                 p.steroidRevealed = false;
                 const msg = handleBuffExpire(p, 'STERIOD');
                 if (msg) expireLogs.push(msg);
+            }
+        }
+        // 時限爆弾のカウントダウンと爆発
+        if (p.timeBombTurns > 0) {
+            if (p.invincibleTurns > 0 || p.steroidTurns > 0) {
+                p.timeBombTurns = 0;
+            } else {
+                p.timeBombTurns -= 1;
+                if (p.timeBombTurns === 0) {
+                    applyScoreChange(p, -6000);
+                    p.hand = [];
+                    p.defenseCard = null;
+                    p.immunityCount = 2;
+                    expireLogs.push(`💣 P${p.number} の「時限爆弾」が爆発！ -6000点、手札・防御全破棄、選択不可(2T)付与！`);
+                }
             }
         }
     });
@@ -475,9 +498,22 @@ function proceedToNextTurn() {
 
     if (nextPlayerId) {
         const nextPlayer = gameState.players[nextPlayerId];
-        if (nextPlayer && nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
+        nextPlayer.bombTransferAttempted = false;
+        nextPlayer.bombDrawnThisTurn = false;
+
+        if (nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
             nextPlayer.invincibleTurns = 0;
             nextPlayer.invincibleSource = null;
+        }
+
+        // 時限爆弾保持者のターン開始時+1000点
+        if (nextPlayer.timeBombTurns > 0) {
+            if (nextPlayer.invincibleTurns > 0 || nextPlayer.steroidTurns > 0) {
+                nextPlayer.timeBombTurns = 0;
+            } else if (!nextPlayer.bombDrawnThisTurn) {
+                applyScoreChange(nextPlayer, 1000);
+                expireLogs.push(`P${nextPlayer.number} の「時限爆弾」保持ボーナス: +1000点獲得！`);
+            }
         }
     }
 
@@ -510,7 +546,10 @@ io.on('connection', (socket) => {
             armorRevealed: false,
             steroidTurns: 0,
             steroidRevealed: false,
-            darknessTurns: 0
+            darknessTurns: 0,
+            timeBombTurns: 0,
+            bombTransferAttempted: false,
+            bombDrawnThisTurn: false
         };
 
         socket.emit('init', { playerNumber: pNum, id: socket.id });
@@ -550,9 +589,23 @@ io.on('connection', (socket) => {
         resetScoreChanges();
 
         const randomCard = getRandomAvailableCard(target);
-        target.hand.push(randomCard);
 
-        broadcastGameState(`[デバッグ] P${target.number} が山札から「${randomCard.name}」をドローしました。`);
+        if (randomCard.id === 'time_bomb') {
+            applyScoreChange(target, 1000);
+            target.timeBombTurns = 8;
+            target.bombDrawnThisTurn = true;
+
+            if (target.invincibleTurns > 0 || target.steroidTurns > 0) {
+                target.timeBombTurns = 0;
+                broadcastGameState(`[デバッグ] P${target.number} が「時限爆弾」をドローしましたが、無敵/ステロイド状態のため消滅しました！`);
+            } else {
+                io.emit('showCutIn', { title: '時限爆弾出現！', imagePath: '/images/time_bomb.png' });
+                broadcastGameState(`[デバッグ] P${target.number} が「時限爆弾」をドロー！ +1000点獲得＆時限爆弾状態(8T)付与！`);
+            }
+        } else {
+            target.hand.push(randomCard);
+            broadcastGameState(`[デバッグ] P${target.number} が山札から「${randomCard.name}」をドローしました。`);
+        }
     });
 
     socket.on('toggleCardSetting', ({ cardId, enabled }) => {
@@ -591,15 +644,64 @@ io.on('connection', (socket) => {
 
         const player = gameState.players[socket.id];
         if (acceptBonus) applyScoreChange(player, 3000);
-        const randomCard = getRandomAvailableCard(player);
-        player.hand.push(randomCard);
 
+        const randomCard = getRandomAvailableCard(player);
         gameState.turnPhase = 'MAIN';
 
-        const bonusLog = acceptBonus ? ' (+3000点獲得)' : '';
+        if (randomCard.id === 'time_bomb') {
+            applyScoreChange(player, 1000);
+            player.timeBombTurns = 8;
+            player.bombDrawnThisTurn = true;
 
-        socket.emit('syncGameState', getSyncPayload(`「${randomCard.name}」を獲得しました。${bonusLog}`));
-        socket.broadcast.emit('syncGameState', getSyncPayload(`P${player.number} がカードを1枚獲得しました。${bonusLog}`));
+            const bonusLog = acceptBonus ? ' (+3000点獲得)' : '';
+
+            if (player.invincibleTurns > 0 || player.steroidTurns > 0) {
+                player.timeBombTurns = 0;
+                broadcastGameState(`P${player.number} が「時限爆弾」をドローしましたが、無敵/ステロイド状態のため消滅しました！${bonusLog}`);
+            } else {
+                io.emit('showCutIn', { title: '時限爆弾出現！', imagePath: '/images/time_bomb.png' });
+                broadcastGameState(`P${player.number} が「時限爆弾」をドロー！ +1000点獲得＆時限爆弾状態(8T)付与！${bonusLog}`);
+            }
+        } else {
+            player.hand.push(randomCard);
+            const bonusLog = acceptBonus ? ' (+3000点獲得)' : '';
+            socket.emit('syncGameState', getSyncPayload(`「${randomCard.name}」を獲得しました。${bonusLog}`));
+            socket.broadcast.emit('syncGameState', getSyncPayload(`P${player.number} がカードを1枚獲得しました。${bonusLog}`));
+        }
+    });
+
+    socket.on('transferTimeBomb', ({ targetPlayerId }) => {
+        const currentTurnId = gameState.currentTurnPlayerId;
+        if (socket.id !== currentTurnId || gameState.turnPhase !== 'MAIN') return;
+
+        const player = gameState.players[socket.id];
+        const target = gameState.players[targetPlayerId];
+
+        if (!player || !target || player.timeBombTurns <= 0 || player.bombTransferAttempted) {
+            socket.emit('errorMessage', '受け渡し条件を満たしていません。');
+            return;
+        }
+
+        const diff = Math.abs(player.score - target.score);
+        const isTargetProtected = (target.invincibleTurns > 0) || (target.steroidTurns > 0);
+
+        if (diff > 3000 || isTargetProtected) {
+            socket.emit('errorMessage', 'この相手には受け渡しできません。');
+            return;
+        }
+
+        player.bombTransferAttempted = true;
+        const isSuccess = Math.random() < 0.5;
+
+        if (isSuccess) {
+            target.timeBombTurns = player.timeBombTurns;
+            player.timeBombTurns = 0;
+            broadcastGameState(`P${player.number} が P${target.number} へ「時限爆弾」の受け渡しに成功しました！ (残り${target.timeBombTurns}T)`);
+            socket.emit('transferTimeBombResult', { success: true });
+        } else {
+            broadcastGameState(`P${player.number} の「時限爆弾」受け渡しは失敗しました… (不発)`);
+            socket.emit('transferTimeBombResult', { success: false });
+        }
     });
 
     socket.on('playCard', ({ instanceId, actionTarget, targetPlayerId, attackCount }) => {
@@ -642,16 +744,19 @@ io.on('connection', (socket) => {
             player.invincibleTurns = 4;
             player.invincibleSource = 'ARMOR';
             player.armorRevealed = false;
+            if (player.timeBombTurns > 0) player.timeBombTurns = 0;
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「無敵アーマー」を使用しました。4ターンの間「無敵状態」になります。`));
             socket.broadcast.emit('syncGameState', getSyncPayload(''));
         } else if (card.id === 'dark_matter') {
             player.hand.splice(cardIndex, 1);
+            if (player.timeBombTurns > 0) player.timeBombTurns = 0;
             executeDarkMatter(socket.id);
         } else if (card.id === 'steroid') {
             player.steroidTurns = 4;
             player.steroidRevealed = false;
+            if (player.timeBombTurns > 0) player.timeBombTurns = 0;
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「ステロイド」を使用しました。4ターンの間「ステロイド状態」になります。`));
@@ -973,9 +1078,6 @@ function getBronzeShieldLowerHitRate(attackerScore, targetScore) {
     return rate;
 }
 
-/**
- * 地震 発動処理 (カットイン演出付き)
- */
 function executeEarthquake(casterSocketId) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
