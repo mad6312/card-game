@@ -87,6 +87,13 @@ const CARD_DECK = [
         desc: '【使用時】自分の得点を+3000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費して「ダイヤの剣」の効果を無効化し、さらに自分の得点を+3000点する。'
     },
     {
+        id: 'omamori_koban_set',
+        name: 'お守り小判セット',
+        category: 'SPECIAL',
+        image: '/images/omamori_koban_set.png',
+        desc: '【使用時】自分の得点を+2000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、自動で1回分消費し、「ダイヤの剣」を回避した上で自分の得点を+2000点する。\n【残り回数】3回'
+    },
+    {
         id: 'disaster',
         name: '大災害',
         category: 'ATTACK',
@@ -125,6 +132,7 @@ const CARD_DECK = [
 
 let cardSettings = {
     omamori_koban: true,
+    omamori_koban_set: true,
     wood_sword: true,
     wood_sword_set: true,
     shotgun: true,
@@ -193,10 +201,16 @@ function getRandomAvailableCard(player) {
 
     const pool = availableCards.length > 0 ? availableCards : CARD_DECK;
     const template = pool[Math.floor(Math.random() * pool.length)];
-    return {
+    const instance = {
         ...template,
         instanceId: 'card_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
     };
+
+    if (instance.id === 'wood_shield_set' || instance.id === 'wood_sword_set' || instance.id === 'omamori_koban_set') {
+        instance.usesLeft = 3;
+    }
+
+    return instance;
 }
 
 function getSyncPayload(customLog = '') {
@@ -812,6 +826,19 @@ io.on('connection', (socket) => {
             applyScoreChange(player, 3000);
             player.hand.splice(cardIndex, 1);
             broadcastGameState(`P${player.number} が「お守り小判」を使用し、+3000点獲得しました！`);
+        } else if (card.id === 'omamori_koban_set') {
+            if (!card.usesLeft) card.usesLeft = 3;
+            const count = Math.min(Math.max(Number(attackCount) || 1, 1), card.usesLeft);
+            const addPoints = count * 2000;
+            card.usesLeft -= count;
+            applyScoreChange(player, addPoints);
+
+            let msg = `P${player.number} が「お守り小判セット」を${count}回分使用し、+${addPoints}点獲得しました！`;
+            if (card.usesLeft <= 0) {
+                player.hand.splice(cardIndex, 1);
+                msg += '（カード破棄）';
+            }
+            broadcastGameState(msg);
         } else if (card.id === 'disaster') {
             player.hand.splice(cardIndex, 1);
             executeDisasterAttack(socket.id);
@@ -1089,7 +1116,6 @@ io.on('connection', (socket) => {
             }
         }
 
-        // 木の剣の防御からの攻撃使用を正しく処理
         if (card.id === 'wood_sword') {
             if (targetPlayerId === 'ALL_LOWER') {
                 player.defenseCard = null;
@@ -2082,8 +2108,25 @@ function executeDiamondSword(casterSocketId) {
             return;
         }
 
+        const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
         const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
-        if (kobanIndex !== -1) {
+
+        if (kobanSetIndex !== -1) {
+            const kobanSet = target.hand[kobanSetIndex];
+            if (!kobanSet.usesLeft) kobanSet.usesLeft = 3;
+            kobanSet.usesLeft -= 1;
+            applyScoreChange(target, 2000);
+
+            let subMsg = '';
+            if (kobanSet.usesLeft <= 0) {
+                target.hand.splice(kobanSetIndex, 1);
+                subMsg = '・カード破棄';
+            } else {
+                subMsg = `・残り${kobanSet.usesLeft}回`;
+            }
+            affectedLogs.push(`P${target.number}(「お守り小判セット」が身代わり発動！効果無効化＆+2000点獲得${subMsg})`);
+            return;
+        } else if (kobanIndex !== -1) {
             target.hand.splice(kobanIndex, 1);
             applyScoreChange(target, 3000);
             affectedLogs.push(`P${target.number}(「お守り小判」が身代わり発動！効果無効化＆+3000点獲得)`);
@@ -2110,7 +2153,7 @@ function executeDiamondSword(casterSocketId) {
             target.defenseCard = null;
             applyScoreChange(target, -5000);
             target.immunityCount = 2;
-            affectedLogs.push(`P${target.number}(-5000点・手札防御全破棄・選択不可付与)`);
+            affectedLogs.push(`P${target.number}(-5000点・手札防御全破棄・選択不可2T)`);
         }
     });
 
