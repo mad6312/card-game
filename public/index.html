@@ -275,7 +275,6 @@
             flex-wrap: wrap;
         }
 
-        /* 手札ホバー時の安定化 */
         .hand-card-wrapper {
             position: relative;
             display: inline-block;
@@ -606,7 +605,6 @@
         let latestGameState = null;
         let currentCardSettings = {};
 
-        // 得点変動演出のタイマー・状態管理
         let lastKnownScoreState = {};
         let scoreDisplayTimers = {};
         let scoreExpiryTimeoutId = null;
@@ -624,6 +622,7 @@
             wood_sword: '木の剣',
             wood_sword_set: '木の剣セット',
             shotgun: 'ショットガン',
+            grenade: 'グレネード',
             diamond_sword: 'ダイヤの剣',
             earthquake: '地震',
             time_bomb: '時限爆弾',
@@ -777,7 +776,6 @@
             const now = Date.now();
             let shortestRemaining = Infinity;
 
-            // 新たな得点変動を受信した場合のみタイマーを設定
             Object.values(data.players).forEach(p => {
                 const last = lastKnownScoreState[p.id];
                 if (p.scoreChange && p.scoreChange !== 0 && (!last || last.score !== p.score || last.scoreChange !== p.scoreChange)) {
@@ -822,7 +820,6 @@
             return `持ち点: ${p.score.toLocaleString()}点`;
         }
 
-        // 演出終了時、DOM全体を破棄せずスコアテキストのみをピンポイントで更新
         function updateScoreTextsOnly() {
             if (!latestGameState) return;
             const now = Date.now();
@@ -1557,6 +1554,27 @@
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                     return;
                 }
+            } else if (cardId === 'grenade') {
+                if (selectEl.value === 'ALL_LOWER' && myPlayer) {
+                    const myScore = myPlayer.score;
+                    const allPlayers = Object.values(latestGameState.players);
+                    const candidates = allPlayers.filter(p => {
+                        if (p.id === myId) return false;
+                        if (p.immunityCount && p.immunityCount > 0) return false;
+                        if (isLaterPlayerInRound1(myId, p.id)) return false;
+                        const diff = myScore - p.score;
+                        return diff >= 1 && diff <= 5000;
+                    });
+
+                    const hitRates = calculateLowerTargetsHitRates(candidates, isDarkness);
+                    const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                } else {
+                    const baseRate = isDarkness ? 0.25 : 0.5;
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${baseRate * 100}%${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                }
             } else if (cardId === 'wood_sword_set') {
                 let countSelect = null;
                 if (isDefense) {
@@ -1581,6 +1599,21 @@
                     const cumulativeHitRate = (1 - Math.pow(1 - baseRate, attackCount));
                     const ratePercent = Math.round(cumulativeHitRate * 1000) / 10;
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${ratePercent}% (${attackCount}回攻撃)${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                }
+            } else if (cardId === 'wood_sword' || cardId === 'shotgun') {
+                if (selectEl.value === 'ALL_LOWER' && myPlayer) {
+                    const myScore = myPlayer.score;
+                    const allPlayers = Object.values(latestGameState.players);
+                    const lowerCandidates = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !isLaterPlayerInRound1(myId, p.id));
+
+                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness);
+                    const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    return;
+                } else {
+                    const baseRate = isDarkness ? 0.25 : 0.5;
+                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${baseRate * 100}%${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                     return;
                 }
             }
@@ -1778,6 +1811,39 @@
                             const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
                             targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                         }
+                    } else if (card.id === 'grenade') {
+                        const allPlayers = Object.values(latestGameState.players);
+                        const myScore = myPlayer.score;
+
+                        allPlayers.forEach((p) => {
+                            if (p.id !== myId) {
+                                const scoreDiff = p.score - myScore;
+                                const isImmune = p.immunityCount && p.immunityCount > 0;
+                                if (isLaterPlayerInRound1(myId, p.id)) return;
+
+                                if (scoreDiff >= 0 && scoreDiff <= 5000 && !isImmune) {
+                                    hasValidTarget = true;
+                                    targetOptionsHtml += `<option value="${p.id}" data-hitrate="50%">${p.name}</option>`;
+                                }
+                            }
+                        });
+
+                        const lowerCandidates = allPlayers.filter(p => {
+                            if (p.id === myId) return false;
+                            if (p.immunityCount && p.immunityCount > 0) return false;
+                            if (isLaterPlayerInRound1(myId, p.id)) return false;
+                            const diff = myScore - p.score;
+                            return diff >= 1 && diff <= 5000;
+                        });
+
+                        if (lowerCandidates.length > 0) {
+                            hasValidTarget = true;
+                            const isDarkness = myPlayer.darknessTurns > 0;
+                            const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness);
+                            const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                            const groupStr = lowerCandidates.map(p => p.name).join(',');
+                            targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        }
                     } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set' || card.id === 'shotgun') {
                         const allPlayers = Object.values(latestGameState.players);
                         const myScore = myPlayer.score;
@@ -1916,6 +1982,39 @@
                         const isDarkness = myPlayer.darknessTurns > 0;
                         const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
                         targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                    }
+                } else if (card.id === 'grenade') {
+                    const allPlayers = Object.values(latestGameState.players);
+                    const myScore = myPlayer.score;
+
+                    allPlayers.forEach((p) => {
+                        if (p.id !== myId) {
+                            const scoreDiff = p.score - myScore;
+                            const isImmune = p.immunityCount && p.immunityCount > 0;
+                            if (isLaterPlayerInRound1(myId, p.id)) return;
+
+                            if (scoreDiff >= 0 && scoreDiff <= 5000 && !isImmune) {
+                                hasValidTarget = true;
+                                targetOptionsHtml += `<option value="${p.id}" data-hitrate="50%">${p.name}</option>`;
+                            }
+                        }
+                    });
+
+                    const lowerCandidates = allPlayers.filter(p => {
+                        if (p.id === myId) return false;
+                        if (p.immunityCount && p.immunityCount > 0) return false;
+                        if (isLaterPlayerInRound1(myId, p.id)) return false;
+                        const diff = myScore - p.score;
+                        return diff >= 1 && diff <= 5000;
+                    });
+
+                    if (lowerCandidates.length > 0) {
+                        hasValidTarget = true;
+                        const isDarkness = myPlayer.darknessTurns > 0;
+                        const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness);
+                        const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                        const groupStr = lowerCandidates.map(p => p.name).join(',');
+                        targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                     }
                 } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
                     const allPlayers = Object.values(latestGameState.players);
