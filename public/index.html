@@ -418,7 +418,7 @@
             padding: 10px;
             z-index: 2000;
             font-size: 12px;
-            max-width: 330px;
+            max-width: 350px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
         }
 
@@ -474,17 +474,31 @@
     <details class="debug-score-panel" open>
         <summary>🛠 デバッグパネル</summary>
 
+        <!-- デバッグ共通設定トグル群 -->
         <div
-            style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-weight: bold; color: #cbd5e1; font-size: 11px;">ボーナススキップ:</span>
+            style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: bold; color: #cbd5e1; font-size: 11px;">ボーナススキップ:</span>
+                    <label style="cursor: pointer; font-size: 11px;">
+                        <input type="checkbox" id="debug-skip-bonus-check" checked
+                            onchange="toggleBonusSkip(this.checked)">
+                        <span id="debug-skip-bonus-text" style="color: #2ecc71; font-weight: bold;">ON</span>
+                    </label>
+                </div>
+                <button class="btn" style="background:#475569; padding: 3px 8px; font-size: 11px; margin: 0;"
+                    onclick="openSettingsModal()">⚙ カード排出設定</button>
+            </div>
+
+            <!-- 他プレイヤー情報公開/非公開切り替え -->
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-weight: bold; color: #cbd5e1; font-size: 11px;">他者情報(手札・防御):</span>
                 <label style="cursor: pointer; font-size: 11px;">
-                    <input type="checkbox" id="debug-skip-bonus-check" checked onchange="toggleBonusSkip(this.checked)">
-                    <span id="debug-skip-bonus-text" style="color: #2ecc71; font-weight: bold;">ON</span>
+                    <input type="checkbox" id="debug-public-info-check" checked
+                        onchange="togglePublicInfo(this.checked)">
+                    <span id="debug-public-info-text" style="color: #2ecc71; font-weight: bold;">公開 (ON)</span>
                 </label>
             </div>
-            <button class="btn" style="background:#475569; padding: 3px 8px; font-size: 11px; margin: 0;"
-                onclick="openSettingsModal()">⚙ カード排出設定</button>
         </div>
 
         <div id="debug-score-list" style="margin-top: 6px;">
@@ -644,6 +658,7 @@
         let scoreExpiryTimeoutId = null;
         let isTimeBombModalTriggeredByEndTurn = false;
         let lastKnownPlayerNames = {};
+        let showOtherPlayersInfo = true; // 他プレイヤー情報公開フラグ
 
         function isLaterPlayerInRound1(actorId, targetId) {
             if (!latestGameState || latestGameState.round !== 1) return false;
@@ -695,6 +710,26 @@
             currentCardSettings = settings;
             renderCardSwitches();
         });
+
+        socket.on('updatePublicInfoSetting', (enabled) => {
+            showOtherPlayersInfo = enabled;
+            const checkEl = document.getElementById('debug-public-info-check');
+            const textEl = document.getElementById('debug-public-info-text');
+
+            if (checkEl) checkEl.checked = enabled;
+            if (textEl) {
+                textEl.innerText = enabled ? '公開 (ON)' : '非公開 (OFF)';
+                textEl.style.color = enabled ? '#2ecc71' : '#e74c3c';
+            }
+
+            if (latestGameState) {
+                updatePlayersUI(latestGameState.players, latestGameState.currentTurnPlayerId);
+            }
+        });
+
+        function togglePublicInfo(enabled) {
+            socket.emit('togglePublicInfoSetting', enabled);
+        }
 
         socket.on('showCutIn', (data) => {
             closeDropActionModal();
@@ -827,6 +862,9 @@
 
         socket.on('syncGameState', (data) => {
             latestGameState = data;
+            if (typeof data.showOtherPlayersInfo !== 'undefined') {
+                showOtherPlayersInfo = data.showOtherPlayersInfo;
+            }
             document.getElementById('status').innerText = '';
 
             const draftArea = document.getElementById('draft-area');
@@ -1014,23 +1052,37 @@
                 const hasActed = latestGameState && latestGameState.actedPlayerIds && latestGameState.actedPlayerIds.includes(p.id);
                 const actedBadgeHtml = hasActed ? `<div class="acted-badge">済</div>` : '';
 
+                // 防御カードの表示HTML生成
                 let defInfo = '<span style="color:#7f8c8d;">なし</span>';
                 if (p.defenseCard) {
                     const card = p.defenseCard.card;
                     const clickAttr = isMe ? `onclick="openDropCardModal('DEFENSE', null)"` : '';
 
                     defInfo = `
-        <span style="color:#2ecc71;">
-            <div class="def-card-wrapper">
-                ${card.image ? `<img src="${card.image}" class="mini-card-icon ${isMe ? 'draggable-def-card' : ''}" ${clickAttr}>` : ''}
-                <div class="card-tooltip">
-                    <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">${card.name}</div>
-                    <div>${card.desc}</div>
-                </div>
-            </div>
-            ${card.name} (${p.defenseCard.usesLeft}回)
-        </span>
-    `;
+                        <span style="color:#2ecc71;">
+                            <div class="def-card-wrapper">
+                                ${card.image ? `<img src="${card.image}" class="mini-card-icon ${isMe ? 'draggable-def-card' : ''}" ${clickAttr}>` : ''}
+                                <div class="card-tooltip">
+                                    <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">${card.name}</div>
+                                    <div>${card.desc}</div>
+                                </div>
+                            </div>
+                            ${card.name} (${p.defenseCard.usesLeft}回)
+                        </span>
+                    `;
+                }
+
+                // 手札・防御情報の領域制御（非公開モード時は手札は完全非表示、防御は発動して耐久残存時のみ表示）
+                let infoRowHtml = '';
+                if (isMe || showOtherPlayersInfo) {
+                    infoRowHtml = `<div>手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>`;
+                } else {
+                    // 非公開モード（OFF時）の相手プレイヤー
+                    const hasRevealedActiveDefense = p.defenseCard && p.defenseCard.revealed && p.defenseCard.usesLeft > 0;
+                    if (hasRevealedActiveDefense) {
+                        infoRowHtml = `<div>防御: ${defInfo}</div>`;
+                    }
+                    // 手札枚数は表示しない、防御も非公開時は行ごと非表示
                 }
 
                 const posNames = ['【自分】', '【下家】', '【対面】', '【上家】'];
@@ -1143,7 +1195,7 @@
                     <div class="player-score" id="player-score-${p.id}" style="font-size: 1.1em; font-weight: bold; margin: 3px 0; color: #38bdf8;">
                         ${scoreDisplayHtml}
                     </div>
-                    <div>手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>
+                    ${infoRowHtml}
                     ${handHtml}
                     ${actedBadgeHtml}
                 `;
@@ -2060,7 +2112,7 @@
                         <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
                             <b style="color:#f39c12;">💰 使用回数を指定して発動:</b><br>
                             消費回数: <select id="drop-koban-count-${card.instanceId}" style="padding:4px; background:#334155; color:#fff; border:1px solid #475569; border-radius:4px; margin:6px 0;">${countOptions}</select><br>
-                            <button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="executeUseKobanSet('${card.instanceId}')">お守り小判セットを使用する</button>
+                            <button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold; margin-top:5px;" onclick="executeUseKobanSet('${card.instanceId}')">お守り小判セットを使用する</button>
                         </div>
                     `;
                 } else if (card.id === 'disaster') {
