@@ -94,6 +94,13 @@ const CARD_DECK = [
         desc: '【使用時】自分の得点を+2000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、自動で1回分消費し、「ダイヤの剣」を回避した上で自分の得点を+2000点する。\n【残り回数】3回'
     },
     {
+        id: 'omamori_oban',
+        name: 'お守り大判',
+        category: 'SPECIAL',
+        image: '/images/omamori_oban.png',
+        desc: '【使用時】自分の得点を+3000点〜+8000点の範囲で選択して加算する。\n【制限】このターン中、手札から他のカードを使用できない。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費し、「ダイヤの剣」を回避した上で自分の得点を+8000点する。'
+    },
+    {
         id: 'disaster',
         name: '大災害',
         category: 'ATTACK',
@@ -133,6 +140,7 @@ const CARD_DECK = [
 let cardSettings = {
     omamori_koban: true,
     omamori_koban_set: true,
+    omamori_oban: true,
     wood_sword: true,
     wood_sword_set: true,
     shotgun: true,
@@ -596,6 +604,8 @@ function proceedToNextTurn() {
         const nextPlayer = gameState.players[nextPlayerId];
         nextPlayer.bombTransferAttempted = false;
         nextPlayer.bombDrawnThisTurn = false;
+        nextPlayer.playedHandCardThisTurn = false;
+        nextPlayer.playedObanThisTurn = false;
 
         if (nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
             nextPlayer.invincibleTurns = 0;
@@ -644,7 +654,9 @@ io.on('connection', (socket) => {
             darknessTurns: 0,
             timeBombTurns: 0,
             bombTransferAttempted: false,
-            bombDrawnThisTurn: false
+            bombDrawnThisTurn: false,
+            playedHandCardThisTurn: false,
+            playedObanThisTurn: false
         };
 
         socket.emit('init', { playerNumber: pNum, id: socket.id });
@@ -799,7 +811,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('playCard', ({ instanceId, actionTarget, targetPlayerId, attackCount }) => {
+    socket.on('playCard', ({ instanceId, actionTarget, targetPlayerId, attackCount, chosenScore }) => {
         resetScoreChanges();
 
         const currentTurnId = gameState.currentTurnPlayerId;
@@ -821,6 +833,31 @@ io.on('connection', (socket) => {
             socket.emit('errorMessage', '防御カードがセットされています。');
             return;
         }
+
+        // お守り大判の排他制御チェック
+        if (card.id === 'omamori_oban') {
+            if (player.playedHandCardThisTurn && !player.playedObanThisTurn) {
+                socket.emit('errorMessage', '他のカードを使用したため発動できません。');
+                return;
+            }
+        } else {
+            if (player.playedObanThisTurn) {
+                socket.emit('errorMessage', '「お守り大判」を使用したため発動できません。');
+                return;
+            }
+        }
+
+        if (card.id === 'omamori_oban') {
+            const addPoints = Math.min(Math.max(Number(chosenScore) || 8000, 3000), 8000);
+            applyScoreChange(player, addPoints);
+            player.playedHandCardThisTurn = true;
+            player.playedObanThisTurn = true;
+            player.hand.splice(cardIndex, 1);
+            broadcastGameState(`P${player.number} が「お守り大判」を使用し、+${addPoints}点獲得しました！`);
+            return;
+        }
+
+        player.playedHandCardThisTurn = true;
 
         if (card.id === 'omamori_koban') {
             applyScoreChange(player, 3000);
@@ -2108,10 +2145,16 @@ function executeDiamondSword(casterSocketId) {
             return;
         }
 
+        const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
         const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
         const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
 
-        if (kobanSetIndex !== -1) {
+        if (obanIndex !== -1) {
+            target.hand.splice(obanIndex, 1);
+            applyScoreChange(target, 8000);
+            affectedLogs.push(`P${target.number}(「お守り大判」が身代わり発動！効果無効化＆+8000点獲得)`);
+            return;
+        } else if (kobanSetIndex !== -1) {
             const kobanSet = target.hand[kobanSetIndex];
             if (!kobanSet.usesLeft) kobanSet.usesLeft = 3;
             kobanSet.usesLeft -= 1;

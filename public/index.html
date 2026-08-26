@@ -211,35 +211,6 @@
             z-index: 10;
         }
 
-        .def-card-wrapper .card-tooltip {
-            visibility: hidden;
-            opacity: 0;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
-            width: 220px;
-            background: rgba(15, 23, 42, 0.98);
-            color: #f8fafc;
-            border: 1px solid #f1c40f;
-            border-radius: 8px;
-            padding: 8px 10px;
-            font-size: 0.8em;
-            line-height: 1.45;
-            text-align: left;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
-            z-index: 9999;
-            transition: opacity 0.15s ease, visibility 0.15s ease;
-            pointer-events: none !important;
-            white-space: pre-line;
-            word-break: break-word;
-        }
-
-        .def-card-wrapper:hover .card-tooltip {
-            visibility: visible;
-            opacity: 1;
-        }
-
         .status-badge-wrapper {
             position: relative;
             display: inline-flex;
@@ -251,11 +222,6 @@
 
         .status-badge-wrapper:hover {
             z-index: 100;
-        }
-
-        .status-badge-wrapper:hover .card-tooltip {
-            visibility: visible;
-            opacity: 1;
         }
 
         .status-badge-img {
@@ -320,44 +286,33 @@
             border-color: #f1c40f;
         }
 
+        /* テンプレート用ツールチップ（非表示にしてJS側で位置計算） */
         .card-tooltip {
-            visibility: hidden;
-            opacity: 0;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
-            width: 220px;
+            display: none !important;
+        }
+
+        /* 画面内に自動配置されるフローティングツールチップ */
+        #global-tooltip {
+            position: fixed;
+            display: none;
+            width: 250px;
+            max-width: calc(100vw - 24px);
+            max-height: calc(100vh - 24px);
+            overflow-y: auto;
             background: rgba(15, 23, 42, 0.98);
             color: #f8fafc;
             border: 1px solid #f1c40f;
             border-radius: 8px;
-            padding: 8px 10px;
+            padding: 10px 12px;
             font-size: 0.8em;
             line-height: 1.45;
             text-align: left;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
-            z-index: 9999;
-            transition: opacity 0.15s ease, visibility 0.15s ease;
-            pointer-events: none !important;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+            z-index: 10000;
+            pointer-events: none;
             white-space: pre-line;
             word-break: break-word;
-        }
-
-        .card-tooltip::after {
-            content: "";
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            margin-left: -6px;
-            border-width: 6px;
-            border-style: solid;
-            border-color: #f1c40f transparent transparent transparent;
-        }
-
-        .hand-card-wrapper:hover .card-tooltip {
-            visibility: visible;
-            opacity: 1;
+            box-sizing: border-box;
         }
 
         .cutin-overlay {
@@ -484,6 +439,8 @@
 </head>
 
 <body>
+    <div id="global-tooltip"></div>
+
     <details class="debug-score-panel" open>
         <summary>🛠 スコア調整 (デバッグ)</summary>
 
@@ -638,6 +595,7 @@
         const CARD_NAMES = {
             omamori_koban: 'お守り小判',
             omamori_koban_set: 'お守り小判セット',
+            omamori_oban: 'お守り大判',
             wood_sword: '木の剣',
             wood_sword_set: '木の剣セット',
             shotgun: 'ショットガン',
@@ -1093,6 +1051,59 @@
             });
         }
 
+        // グローバルツールチップの画面内自動位置補正ロジック
+        document.addEventListener('mouseover', (e) => {
+            const wrapper = e.target.closest('.def-card-wrapper, .status-badge-wrapper, .hand-card-wrapper');
+            const tooltipEl = document.getElementById('global-tooltip');
+            if (!tooltipEl) return;
+
+            if (wrapper) {
+                const tooltipTemplate = wrapper.querySelector('.card-tooltip');
+                if (tooltipTemplate) {
+                    tooltipEl.innerHTML = tooltipTemplate.innerHTML;
+                    tooltipEl.style.display = 'block';
+
+                    const targetRect = wrapper.getBoundingClientRect();
+                    const tooltipWidth = tooltipEl.offsetWidth || 250;
+                    const tooltipHeight = tooltipEl.offsetHeight || 100;
+
+                    const padding = 10;
+                    let left = targetRect.left + (targetRect.width - tooltipWidth) / 2;
+                    let top = targetRect.top - tooltipHeight - 8;
+
+                    // 上にはみ出る場合は下側に反転
+                    if (top < padding) {
+                        top = targetRect.bottom + 8;
+                    }
+
+                    // 下にはみ出る場合は画面内に収める
+                    if (top + tooltipHeight > window.innerHeight - padding) {
+                        top = window.innerHeight - tooltipHeight - padding;
+                    }
+
+                    // 左右のはみ出し補正
+                    if (left < padding) {
+                        left = padding;
+                    } else if (left + tooltipWidth > window.innerWidth - padding) {
+                        left = window.innerWidth - tooltipWidth - padding;
+                    }
+
+                    tooltipEl.style.left = `${left}px`;
+                    tooltipEl.style.top = `${top}px`;
+                }
+            }
+        });
+
+        document.addEventListener('mouseout', (e) => {
+            const wrapper = e.target.closest('.def-card-wrapper, .status-badge-wrapper, .hand-card-wrapper');
+            if (wrapper) {
+                const tooltipEl = document.getElementById('global-tooltip');
+                if (tooltipEl) {
+                    tooltipEl.style.display = 'none';
+                }
+            }
+        });
+
         function chooseBonusChoice(accept) {
             socket.emit('chooseBonus', accept);
             document.getElementById('bonus-choice-modal').style.display = 'none';
@@ -1209,6 +1220,13 @@
             const selectEl = document.getElementById(`drop-koban-count-${instanceId}`);
             const attackCount = selectEl ? Number(selectEl.value) : 1;
             socket.emit('playCard', { instanceId: instanceId, attackCount: attackCount });
+            closeDropActionModal();
+        }
+
+        function executeUseOban(instanceId) {
+            const selectEl = document.getElementById(`drop-oban-score-${instanceId}`);
+            const chosenScore = selectEl ? Number(selectEl.value) : 8000;
+            socket.emit('playCard', { instanceId: instanceId, chosenScore: chosenScore });
             closeDropActionModal();
         }
 
@@ -1768,8 +1786,39 @@
             const hasDefense = !!myPlayer.defenseCard;
             let html = '';
 
+            // お守り大判の排他制御チェック
+            const hasUsedOtherCard = myPlayer.playedHandCardThisTurn && !myPlayer.playedObanThisTurn;
+            const hasUsedOban = myPlayer.playedObanThisTurn;
+
             if (source === 'HAND') {
-                if (card.id === 'omamori_koban') {
+                if (card.id === 'omamori_oban') {
+                    if (hasUsedOtherCard) {
+                        html += `
+                            <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
+                                <div style="color:#e74c3c; font-weight:bold; font-size:0.9em; margin-bottom:6px;">※他のカードを使用したため発動できません</div>
+                                <button class="btn" disabled style="background:#7f8c8d; width:100%;">お守り大判を使用する</button>
+                            </div>
+                        `;
+                    } else {
+                        let scoreOptions = '';
+                        for (let s = 8000; s >= 3000; s -= 1000) {
+                            scoreOptions += `<option value="${s}" ${s === 8000 ? 'selected' : ''}>+${s}点</option>`;
+                        }
+                        html += `
+                            <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
+                                <b style="color:#f39c12;">💰 獲得得点を選択:</b><br>
+                                得点: <select id="drop-oban-score-${card.instanceId}" style="padding:4px; background:#334155; color:#fff; border:1px solid #475569; border-radius:4px; margin:6px 0;">${scoreOptions}</select><br>
+                                <button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold; margin-top:5px;" onclick="executeUseOban('${card.instanceId}')">お守り大判を使用する</button>
+                            </div>
+                        `;
+                    }
+                } else if (hasUsedOban) {
+                    html += `
+                        <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center;">
+                            <div style="color:#e74c3c; font-weight:bold; font-size:0.9em;">※「お守り大判」を使用したため発動できません</div>
+                        </div>
+                    `;
+                } else if (card.id === 'omamori_koban') {
                     html += `<button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">お守り小判を使用する (+3000点)</button>`;
                 } else if (card.id === 'omamori_koban_set') {
                     const maxUses = card.usesLeft || 3;
