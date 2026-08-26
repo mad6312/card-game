@@ -41,14 +41,25 @@
             cursor: not-allowed;
         }
 
-        .settings-btn {
+        /* 画面右上の共通設定ボタン */
+        .user-settings-btn {
             position: absolute;
             top: 0;
             right: 0;
-            background: #7f8c8d;
-            font-size: 14px;
+            background: #34495e;
+            border: 1px solid #475569;
+            color: #f1c40f;
+            font-size: 16px;
             padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
             z-index: 1050;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .user-settings-btn:hover {
+            background: #1e293b;
+            border-color: #f1c40f;
         }
 
         .modal {
@@ -66,7 +77,8 @@
             padding: 20px;
         }
 
-        #settings-modal {
+        #settings-modal,
+        #user-settings-modal {
             z-index: 1100;
         }
 
@@ -83,6 +95,24 @@
             width: 100%;
             text-align: left;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+
+        .settings-section {
+            background: #1a252f;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+
+        .settings-section-title {
+            font-weight: bold;
+            color: #f1c40f;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         #card-switches {
@@ -388,7 +418,7 @@
             padding: 10px;
             z-index: 2000;
             font-size: 12px;
-            max-width: 320px;
+            max-width: 330px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
         }
 
@@ -442,23 +472,29 @@
     <div id="global-tooltip"></div>
 
     <details class="debug-score-panel" open>
-        <summary>🛠 スコア調整 (デバッグ)</summary>
+        <summary>🛠 デバッグパネル</summary>
 
         <div
-            style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between;">
-            <span style="font-weight: bold; color: #cbd5e1;">ボーナススキップ:</span>
-            <label style="cursor: pointer; font-size: 11px;">
-                <input type="checkbox" id="debug-skip-bonus-check" checked onchange="toggleBonusSkip(this.checked)">
-                <span id="debug-skip-bonus-text" style="color: #2ecc71; font-weight: bold;">ON</span>
-            </label>
+            style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: bold; color: #cbd5e1; font-size: 11px;">ボーナススキップ:</span>
+                <label style="cursor: pointer; font-size: 11px;">
+                    <input type="checkbox" id="debug-skip-bonus-check" checked onchange="toggleBonusSkip(this.checked)">
+                    <span id="debug-skip-bonus-text" style="color: #2ecc71; font-weight: bold;">ON</span>
+                </label>
+            </div>
+            <button class="btn" style="background:#475569; padding: 3px 8px; font-size: 11px; margin: 0;"
+                onclick="openSettingsModal()">⚙ カード排出設定</button>
         </div>
 
         <div id="debug-score-list" style="margin-top: 6px;">
             <div style="color: #94a3b8; font-size: 11px;">プレイヤー接続待機中...</div>
         </div>
     </details>
+
     <div class="container">
-        <button class="btn settings-btn" onclick="openSettingsModal()">⚙ デバッグ設定</button>
+        <!-- 画面右上の設定メニューボタン -->
+        <button class="user-settings-btn" onclick="openUserSettingsModal()" title="ゲーム設定">⚙ 設定</button>
 
         <h2>対戦カードゲーム</h2>
         <div id="status">接続待機中...</div>
@@ -489,6 +525,30 @@
 
                 <div class="seat-left" id="seat-left"></div>
                 <div class="seat-bottom" id="seat-bottom"></div>
+            </div>
+        </div>
+
+        <!-- ユーザー設定モーダル -->
+        <div id="user-settings-modal" class="modal">
+            <div class="modal-content" style="max-width: 440px;">
+                <h3 style="margin-top:0; color:#f1c40f; border-bottom:1px solid #475569; padding-bottom:8px;">⚙ ゲーム設定
+                </h3>
+
+                <!-- セクション：プレイヤー名変更 -->
+                <div class="settings-section">
+                    <div class="settings-section-title">👤 プレイヤー名変更</div>
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <input type="text" id="user-name-input" maxlength="10" placeholder="名前を入力 (最大10文字)"
+                            style="flex: 1; padding: 6px 10px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; font-size: 13px;">
+                        <button class="btn" style="background:#27ae60; margin:0; padding: 6px 12px; font-weight: bold;"
+                            onclick="submitNameChange()">変更</button>
+                    </div>
+                    <div style="font-size: 0.8em; color: #94a3b8; margin-top: 4px;">※ゲーム内の盤面やログに即座に反映されます。</div>
+                </div>
+
+                <div style="text-align: right; margin-top: 15px;">
+                    <button class="btn" style="background:#7f8c8d;" onclick="closeUserSettingsModal()">閉じる</button>
+                </div>
             </div>
         </div>
 
@@ -583,6 +643,7 @@
         let scoreDisplayTimers = {};
         let scoreExpiryTimeoutId = null;
         let isTimeBombModalTriggeredByEndTurn = false;
+        let lastKnownPlayerNames = {};
 
         function isLaterPlayerInRound1(actorId, targetId) {
             if (!latestGameState || latestGameState.round !== 1) return false;
@@ -606,6 +667,7 @@
             wood_shield: '木の盾',
             wood_shield_set: '木の盾セット',
             bronze_shield: '青銅の盾',
+            bronze_shield_set: '青銅の盾セット',
             disaster: '大災害',
             invincible_armor: '無敵アーマー',
             dark_matter: 'ダークマター',
@@ -619,6 +681,8 @@
             myPlayerNumber = data.playerNumber;
             myId = data.id;
             document.getElementById('status').innerText = `あなたは P${myPlayerNumber} です。他のプレイヤーを待っています...`;
+            const nameInput = document.getElementById('user-name-input');
+            if (nameInput) nameInput.value = data.name || `P${myPlayerNumber}`;
         });
 
         socket.on('playerUpdate', (data) => {
@@ -657,6 +721,30 @@
                 socket.emit('endTurn');
             }
         });
+
+        function openUserSettingsModal() {
+            if (latestGameState && myId && latestGameState.players[myId]) {
+                const nameInput = document.getElementById('user-name-input');
+                if (nameInput) nameInput.value = latestGameState.players[myId].name;
+            }
+            document.getElementById('user-settings-modal').style.display = 'block';
+        }
+
+        function closeUserSettingsModal() {
+            document.getElementById('user-settings-modal').style.display = 'none';
+        }
+
+        function submitNameChange() {
+            const nameInput = document.getElementById('user-name-input');
+            if (!nameInput) return;
+            const newName = nameInput.value.trim();
+            if (!newName) {
+                alert('名前を入力してください。');
+                return;
+            }
+            socket.emit('changePlayerName', { newName });
+            closeUserSettingsModal();
+        }
 
         function renderCardSwitches() {
             const container = document.getElementById('card-switches');
@@ -749,8 +837,21 @@
 
             document.getElementById('game-main').style.display = 'block';
             document.getElementById('round-info').innerText = `第 ${data.round} 巡目 / 全10巡`;
-            if (data.log) {
-                const logBox = document.getElementById('log-box');
+
+            const logBox = document.getElementById('log-box');
+
+            // プレイヤーネーム変更の検知と既存ログ内の名前の一括置換同期
+            if (data.players && logBox) {
+                Object.values(data.players).forEach(p => {
+                    const old = lastKnownPlayerNames[p.id];
+                    if (old && old !== p.name && logBox.innerText) {
+                        logBox.innerText = logBox.innerText.split(old).join(p.name);
+                    }
+                    lastKnownPlayerNames[p.id] = p.name;
+                });
+            }
+
+            if (data.log && logBox) {
                 logBox.innerText = data.log + '\n' + logBox.innerText;
             }
 
@@ -846,7 +947,7 @@
                 const row = document.createElement('div');
                 row.className = 'debug-p-row';
                 row.innerHTML = `
-                    <span style="font-weight:bold; min-width:30px;">P${p.number}:</span>
+                    <span style="font-weight:bold; min-width:40px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${p.name}">P${p.number}:</span>
                     <input type="number" class="debug-score-input" id="debug-input-${p.id}" value="${p.score}" step="500">
                     <button style="background:#27ae60; padding:2px 6px; font-size:10px; border:none; border-radius:3px; color:white; cursor:pointer;" onclick="setDebugScoreDirect('${p.id}')">Set</button>
                     <div class="debug-btn-group">
@@ -942,7 +1043,7 @@
                         handHtml += `<div class="my-hand-container">`;
                         p.hand.forEach(card => {
                             let descText = card.desc;
-                            if (card.id === 'omamori_koban_set') {
+                            if (card.id === 'omamori_koban_set' || card.id === 'bronze_shield_set' || card.id === 'wood_shield_set' || card.id === 'wood_sword_set') {
                                 descText = descText.replace(/【残り回数】.*$/, `【残り回数】${card.usesLeft || 3}回`);
                             }
                             handHtml += `
@@ -1036,7 +1137,7 @@
 
                 box.innerHTML = `
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <strong>${posName} P${p.number} ${isMe ? '(あなた)' : ''} ${isTurn ? '★' : ''}${statusBadge}</strong>
+                        <strong>${posName} ${p.name} ${isMe ? '(あなた)' : ''} ${isTurn ? '★' : ''}${statusBadge}</strong>
                         <span style="color:#f1c40f; font-weight:bold;"> ${rank}位</span>
                     </div>
                     <div class="player-score" id="player-score-${p.id}" style="font-size: 1.1em; font-weight: bold; margin: 3px 0; color: #38bdf8;">
@@ -1456,6 +1557,98 @@
             };
         }
 
+        function calculateBronzeShieldSetGroupHitRates(candidates, myScore, attackCount = 1, isDarkness = false) {
+            if (!candidates || candidates.length === 0) return { groupStr: '', rateDetailStr: '' };
+
+            const hitProbabilities = {};
+            candidates.forEach(p => hitProbabilities[p.id] = 0);
+
+            let currentStates = [{
+                aliveIds: candidates.map(p => p.id),
+                prob: 1.0
+            }];
+
+            const darknessMult = isDarkness ? 0.5 : 1.0;
+
+            for (let step = 0; step < attackCount; step++) {
+                const nextStates = [];
+
+                currentStates.forEach(state => {
+                    const aliveCandidates = candidates.filter(p => state.aliveIds.includes(p.id));
+
+                    if (aliveCandidates.length === 0) {
+                        nextStates.push(state);
+                        return;
+                    }
+
+                    const groups = [];
+                    const sorted = [...aliveCandidates].sort((a, b) => (myScore - a.score) - (myScore - b.score));
+                    sorted.forEach(p => {
+                        const diff = myScore - p.score;
+                        let last = groups[groups.length - 1];
+                        if (last && last.diff === diff) last.players.push(p);
+                        else groups.push({ diff, players: [p] });
+                    });
+
+                    const singleHitProb = {};
+                    let pMissCumulative = 1.0;
+
+                    groups.forEach(g => {
+                        const m = g.players.length;
+                        let r = Math.max(0, 1 - g.diff / 5000) * darknessMult;
+                        if (r <= 0 || m === 0) return;
+
+                        const pGroupAllMiss = Math.pow(1 - r, m);
+                        const pGroupHitTotal = pMissCumulative * (1 - pGroupAllMiss);
+                        const pIndividual = pGroupHitTotal / m;
+
+                        g.players.forEach(p => singleHitProb[p.id] = pIndividual);
+                        pMissCumulative *= pGroupAllMiss;
+                    });
+
+                    const totalHitProbInThisStep = Object.values(singleHitProb).reduce((a, b) => a + b, 0);
+                    const missProbInThisStep = 1 - totalHitProbInThisStep;
+
+                    if (missProbInThisStep > 0) {
+                        nextStates.push({
+                            aliveIds: [...state.aliveIds],
+                            prob: state.prob * missProbInThisStep
+                        });
+                    }
+
+                    Object.keys(singleHitProb).forEach(hitPlayerId => {
+                        const pHit = singleHitProb[hitPlayerId];
+                        if (pHit <= 0) return;
+
+                        const transitionProb = state.prob * pHit;
+                        hitProbabilities[hitPlayerId] += transitionProb;
+
+                        nextStates.push({
+                            aliveIds: state.aliveIds.filter(id => id !== hitPlayerId),
+                            prob: transitionProb
+                        });
+                    });
+                });
+
+                currentStates = nextStates;
+            }
+
+            const rateDetails = [];
+            const playerNames = [];
+
+            candidates.forEach(p => {
+                const finalProb = hitProbabilities[p.id] || 0;
+                const ratePercent = Math.round(finalProb * 1000) / 10;
+                rateDetails.push(`${p.name}: ${ratePercent}%`);
+                playerNames.push(p.name);
+            });
+
+            return {
+                groupStr: playerNames.join(','),
+                rateDetailStr: rateDetails.join(', ')
+            };
+        }
+
         function calculateWoodSwordSetGroupHitRates(candidates, myScore, attackCount = 1, isDarkness = false) {
             if (!candidates || candidates.length === 0) return { groupStr: '', rateDetailStr: '' };
 
@@ -1596,10 +1789,42 @@
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                     return;
                 }
-            } else if (cardId === 'bronze_shield') {
-                if (selectEl.value === 'CLOSEST_HIGHER') {
-                    const rawRateInfo = selectedOption.getAttribute('data-hitrate');
-                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rawRateInfo} (必中/選出確率)</span>`;
+            } else if (cardId === 'bronze_shield' || cardId === 'bronze_shield_set') {
+                let countSelect = null;
+                if (isDefense) {
+                    countSelect = document.getElementById('drop-def-attack-count');
+                } else {
+                    const instanceId = selectEl.id.replace(/^drop-target-/, '');
+                    countSelect = document.getElementById(`drop-attack-count-${instanceId}`);
+                }
+                const attackCount = (cardId === 'bronze_shield_set' && countSelect) ? (Number(countSelect.value) || 1) : 1;
+
+                if (selectEl.value === 'CLOSEST_HIGHER' && myPlayer) {
+                    const myScore = myPlayer.score;
+                    const allPlayers = Object.values(latestGameState.players);
+                    const candidates = allPlayers.filter(p => {
+                        if (p.id === myId) return false;
+                        if (p.immunityCount && p.immunityCount > 0) return false;
+                        if (isLaterPlayerInRound1(myId, p.id)) return false;
+                        const diff = p.score - myScore;
+                        return diff >= 0 && diff <= 10000;
+                    });
+
+                    if (candidates.length > 0) {
+                        const minDiff = Math.min(...candidates.map(p => p.score - myScore));
+                        const closestGroup = candidates.filter(p => (p.score - myScore) === minDiff);
+                        const m = closestGroup.length;
+
+                        if (m === 1) {
+                            displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">100% (必中)</span>`;
+                        } else {
+                            const prob = Math.min(1.0, attackCount / m);
+                            const ratePercent = Math.round(prob * 1000) / 10;
+                            const rateDetailStr = closestGroup.map(p => `${p.name}: ${ratePercent}%`).join(', ');
+                            const countText = (cardId === 'bronze_shield_set' && attackCount > 1) ? ` (${attackCount}回連撃/実質選出率)` : ` (選出確率)`;
+                            displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${countText}</span>`;
+                        }
+                    }
                     return;
                 } else if (selectEl.value === 'LOWER' && myPlayer) {
                     const myScore = myPlayer.score;
@@ -1611,8 +1836,13 @@
                         return p.score < myScore && (myScore - p.score) < 5000;
                     });
 
-                    const { rateDetailStr } = calculateBronzeShieldGroupHitRates(candidates, myScore, isDarkness);
-                    displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    if (cardId === 'bronze_shield_set') {
+                        const { rateDetailStr } = calculateBronzeShieldSetGroupHitRates(candidates, myScore, attackCount, isDarkness);
+                        displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    } else {
+                        const { rateDetailStr } = calculateBronzeShieldGroupHitRates(candidates, myScore, isDarkness);
+                        displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
+                    }
                     return;
                 }
             } else if (cardId === 'grenade') {
@@ -1757,7 +1987,7 @@
 
             if (source === 'HAND') {
                 card = myPlayer.hand.find(c => String(c.instanceId) === String(instanceId));
-                usesLeft = card ? ((card.id === 'wood_shield_set' || card.id === 'wood_sword_set' || card.id === 'omamori_koban_set') ? (card.usesLeft || 3) : 1) : 1;
+                usesLeft = card ? ((card.id === 'wood_shield_set' || card.id === 'bronze_shield_set' || card.id === 'wood_sword_set' || card.id === 'omamori_koban_set') ? (card.usesLeft || 3) : 1) : 1;
             } else if (source === 'DEFENSE') {
                 if (myPlayer.defenseCard) {
                     card = myPlayer.defenseCard.card;
@@ -1774,7 +2004,7 @@
             }
 
             let descText = card.desc;
-            if (card.id === 'omamori_koban_set') {
+            if (card.id === 'omamori_koban_set' || card.id === 'bronze_shield_set' || card.id === 'wood_shield_set' || card.id === 'wood_sword_set') {
                 descText = descText.replace(/【残り回数】.*$/, `【残り回数】${card.usesLeft || 3}回`);
             }
 
@@ -1830,7 +2060,7 @@
                         <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
                             <b style="color:#f39c12;">💰 使用回数を指定して発動:</b><br>
                             消費回数: <select id="drop-koban-count-${card.instanceId}" style="padding:4px; background:#334155; color:#fff; border:1px solid #475569; border-radius:4px; margin:6px 0;">${countOptions}</select><br>
-                            <button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold; margin-top:5px;" onclick="executeUseKobanSet('${card.instanceId}')">お守り小判セットを使用する</button>
+                            <button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="executeUseKobanSet('${card.instanceId}')">お守り小判セットを使用する</button>
                         </div>
                     `;
                 } else if (card.id === 'disaster') {
@@ -1929,7 +2159,7 @@
                             const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(lower, myScore, 1, isDarkness);
                             targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                         }
-                    } else if (card.id === 'bronze_shield') {
+                    } else if (card.id === 'bronze_shield' || card.id === 'bronze_shield_set') {
                         const allPlayers = Object.values(latestGameState.players);
                         const myScore = myPlayer.score;
 
@@ -1960,8 +2190,13 @@
                         if (lowerCandidates.length > 0) {
                             hasValidTarget = true;
                             const isDarkness = myPlayer.darknessTurns > 0;
-                            const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
-                            targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                            if (card.id === 'bronze_shield_set') {
+                                const { groupStr, rateDetailStr } = calculateBronzeShieldSetGroupHitRates(lowerCandidates, myScore, 1, isDarkness);
+                                targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                            } else {
+                                const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
+                                targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                            }
                         }
                     } else if (card.id === 'grenade') {
                         const allPlayers = Object.values(latestGameState.players);
@@ -2032,7 +2267,7 @@
                     html += `<div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">`;
                     html += `<b style="color:#e74c3c;">⚔ 攻撃する:</b><br>`;
 
-                    const isSetCard = (card.id === 'wood_shield_set' || card.id === 'wood_sword_set');
+                    const isSetCard = (card.id === 'wood_shield_set' || card.id === 'bronze_shield_set' || card.id === 'wood_sword_set');
 
                     if (!hasValidTarget) {
                         html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin:4px 0;">対象が存在しません</div>`;
@@ -2101,7 +2336,7 @@
                         const { groupStr, rateDetailStr } = calculateWoodShieldGroupHitRates(lower, myScore, 1, isDarkness);
                         targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                     }
-                } else if (card.id === 'bronze_shield') {
+                } else if (card.id === 'bronze_shield' || card.id === 'bronze_shield_set') {
                     const allPlayers = Object.values(latestGameState.players);
                     const myScore = myPlayer.score;
 
@@ -2132,8 +2367,13 @@
                     if (lowerCandidates.length > 0) {
                         hasValidTarget = true;
                         const isDarkness = myPlayer.darknessTurns > 0;
-                        const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
-                        targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        if (card.id === 'bronze_shield_set') {
+                            const { groupStr, rateDetailStr } = calculateBronzeShieldSetGroupHitRates(lowerCandidates, myScore, 1, isDarkness);
+                            targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        } else {
+                            const { groupStr, rateDetailStr } = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
+                            targetOptionsHtml += `<option value="LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                        }
                     }
                 } else if (card.id === 'grenade') {
                     const allPlayers = Object.values(latestGameState.players);
@@ -2204,7 +2444,7 @@
                 html += `<div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">`;
                 html += `<b style="color:#e74c3c;">⚔ 防御を外して攻撃:</b><br>`;
 
-                const isSetCard = (card.id === 'wood_shield_set' || card.id === 'wood_sword_set');
+                const isSetCard = (card.id === 'wood_shield_set' || card.id === 'bronze_shield_set' || card.id === 'wood_sword_set');
 
                 if (!hasValidTarget) {
                     html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin:4px 0;">対象が存在しません</div>`;
