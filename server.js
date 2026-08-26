@@ -144,6 +144,19 @@ const CARD_DECK = [
     }
 ];
 
+// デフォルト共通アバターID
+const DEFAULT_AVATAR_ID = 'avatar_default';
+
+// 選択可能なシステムプリセットアバター一覧（デフォルトは選択肢に含めない）
+const PRESET_AVATARS = [
+    { id: 'avatar_1', name: '戦士', image: '/images/avatars/avatar_1.png' },
+    { id: 'avatar_2', name: '魔法使い', image: '/images/avatars/avatar_2.png' },
+    { id: 'avatar_3', name: '僧侶', image: '/images/avatars/avatar_3.png' },
+    { id: 'avatar_4', name: '盗賊', image: '/images/avatars/avatar_4.png' },
+    { id: 'avatar_5', name: '忍者', image: '/images/avatars/avatar_5.png' },
+    { id: 'avatar_6', name: '騎士', image: '/images/avatars/avatar_6.png' }
+];
+
 let cardSettings = {
     omamori_koban: true,
     omamori_koban_set: true,
@@ -642,10 +655,12 @@ io.on('connection', (socket) => {
 
     if (playerKeys.length < 4 && !gameState.started) {
         const pNum = playerKeys.length + 1;
+
         gameState.players[socket.id] = {
             id: socket.id,
             number: pNum,
             name: `P${pNum}`,
+            avatar: DEFAULT_AVATAR_ID, // 全プレイヤー共通のデフォルトアバター初期割り当て
             score: 25000,
             prevScore: 25000,
             scoreChange: 0,
@@ -666,7 +681,13 @@ io.on('connection', (socket) => {
             playedObanThisTurn: false
         };
 
-        socket.emit('init', { playerNumber: pNum, id: socket.id, name: `P${pNum}` });
+        socket.emit('init', {
+            playerNumber: pNum,
+            id: socket.id,
+            name: `P${pNum}`,
+            avatar: DEFAULT_AVATAR_ID,
+            presetAvatars: PRESET_AVATARS
+        });
         io.emit('playerUpdate', { playerCount: Object.keys(gameState.players).length });
         socket.emit('updateCardSettings', cardSettings);
         socket.emit('updatePublicInfoSetting', showOtherPlayersInfo);
@@ -692,6 +713,26 @@ io.on('connection', (socket) => {
         player.name = trimmed.slice(0, 10);
 
         broadcastGameState(`[設定] 「${oldName}」がプレイヤー名を「${player.name}」に変更しました。`);
+    });
+
+    socket.on('changePlayerAvatar', ({ avatarId }) => {
+        const player = gameState.players[socket.id];
+        if (!player) return;
+
+        // デフォルトアバターへの手動変更は不可（不可逆ルール）
+        if (avatarId === DEFAULT_AVATAR_ID) {
+            socket.emit('errorMessage', 'デフォルトアバターに戻すことはできません。');
+            return;
+        }
+
+        const valid = PRESET_AVATARS.some(a => a.id === avatarId);
+        if (!valid) {
+            socket.emit('errorMessage', '無効なアバターが選択されました。');
+            return;
+        }
+
+        player.avatar = avatarId;
+        broadcastGameState(`[設定] ${player.name} がアバターを変更しました。`);
     });
 
     socket.on('togglePublicInfoSetting', (enabled) => {
@@ -804,7 +845,6 @@ io.on('connection', (socket) => {
             const bonusLog = acceptBonus ? ' (+3000点獲得)' : '';
             socket.emit('syncGameState', getSyncPayload(`「${randomCard.name}」を獲得しました。${bonusLog}`));
 
-            // 非公開モード時は他者へのドロー通知ログを出さない
             const otherLog = showOtherPlayersInfo ? `${player.name} がカードを1枚獲得しました。${bonusLog}` : '';
             socket.broadcast.emit('syncGameState', getSyncPayload(otherLog));
         }
@@ -867,7 +907,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // お守り大判の排他制御チェック
         if (card.id === 'omamori_oban') {
             if (player.playedHandCardThisTurn && !player.playedObanThisTurn) {
                 socket.emit('errorMessage', '他のカードを使用したため発動できません。');
@@ -1415,7 +1454,7 @@ function executeBronzeShieldSetAttack(attackerId, cardObj, maxAttacks, onComplet
                 broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
             } else {
                 target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                target.defenseCard.revealed = true;
                 let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                 if (target.defenseCard.card.id === 'grenade') {
                     executeGrenadeDefenseCounter(target.id);
@@ -1563,7 +1602,7 @@ function executeBronzeShieldSetGroupAttack(attackerId, cardObj, maxAttacks, onCo
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
                 } else {
                     target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                    target.defenseCard.revealed = true;
                     let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                     if (target.defenseCard.card.id === 'grenade') {
                         executeGrenadeDefenseCounter(target.id);
@@ -1816,7 +1855,7 @@ function executeBronzeShieldClosestAttack(attackerId) {
             broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
         } else {
             target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+            target.defenseCard.revealed = true;
             let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
             if (target.defenseCard.card.id === 'grenade') {
                 executeGrenadeDefenseCounter(target.id);
@@ -1926,7 +1965,7 @@ function executeBronzeShieldGroupAttack(attackerId) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
             } else {
                 target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                target.defenseCard.revealed = true;
                 let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！（攻撃終了）`;
                 if (target.defenseCard.card.id === 'grenade') {
                     executeGrenadeDefenseCounter(target.id);
@@ -2045,7 +2084,7 @@ function executeWoodShieldGroupAttack(attackerId, groupType) {
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
             } else {
                 target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                target.defenseCard.revealed = true;
                 let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！（攻撃中断）`;
                 if (target.defenseCard.card.id === 'grenade') {
                     executeGrenadeDefenseCounter(target.id);
@@ -2183,7 +2222,7 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
                 } else {
                     target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                    target.defenseCard.revealed = true;
                     let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                     if (target.defenseCard.card.id === 'grenade') {
                         executeGrenadeDefenseCounter(target.id);
@@ -2283,7 +2322,7 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
                 broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
             } else {
                 target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                target.defenseCard.revealed = true;
                 let msg = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                 if (target.defenseCard.card.id === 'grenade') {
                     executeGrenadeDefenseCounter(target.id);
@@ -2421,7 +2460,7 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
                     broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
                 } else {
                     target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                    target.defenseCard.revealed = true;
                     let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                     if (target.defenseCard.card.id === 'grenade') {
                         executeGrenadeDefenseCounter(target.id);
@@ -2574,7 +2613,7 @@ function executeStandardAttack(attackerId, targetId, cardId) {
             broadcastGameState(logPrefix + rateText + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
         } else {
             target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+            target.defenseCard.revealed = true;
             let msg = logPrefix + rateText + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
             if (target.defenseCard.card.id === 'grenade') {
                 executeGrenadeDefenseCounter(target.id);
@@ -2662,7 +2701,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
                     broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
                 } else {
                     target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                    target.defenseCard.revealed = true;
                     let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                     if (target.defenseCard.card.id === 'grenade') {
                         executeGrenadeDefenseCounter(target.id);
@@ -2730,7 +2769,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
             broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
         } else {
             target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+            target.defenseCard.revealed = true;
             let msg = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
             if (target.defenseCard.card.id === 'grenade') {
                 executeGrenadeDefenseCounter(target.id);
@@ -2806,7 +2845,7 @@ function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onCom
                 broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
             } else {
                 target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true; // 防御カード発動により公開状態へ
+                target.defenseCard.revealed = true;
                 let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                 if (target.defenseCard.card.id === 'grenade') {
                     executeGrenadeDefenseCounter(target.id);

@@ -115,6 +115,48 @@
             gap: 6px;
         }
 
+        /* プレイヤーアバター関連スタイル */
+        .player-avatar-img {
+            width: 36px;
+            height: 36px;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 2px solid #64748b;
+            background: #0f172a;
+            flex-shrink: 0;
+        }
+
+        .avatar-picker-container {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 8px 4px;
+        }
+
+        .avatar-picker-item {
+            width: 52px;
+            height: 52px;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #475569;
+            background: #0f172a;
+            cursor: pointer;
+            transition: border-color 0.2s, transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .avatar-picker-item:hover {
+            transform: scale(1.08);
+            border-color: #38bdf8;
+        }
+
+        .avatar-picker-item.selected {
+            border-color: #f1c40f;
+            box-shadow: 0 0 10px #f1c40f;
+        }
+
         #card-switches {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -544,7 +586,7 @@
 
         <!-- ユーザー設定モーダル -->
         <div id="user-settings-modal" class="modal">
-            <div class="modal-content" style="max-width: 440px;">
+            <div class="modal-content" style="max-width: 460px;">
                 <h3 style="margin-top:0; color:#f1c40f; border-bottom:1px solid #475569; padding-bottom:8px;">⚙ ゲーム設定
                 </h3>
 
@@ -558,6 +600,14 @@
                             onclick="submitNameChange()">変更</button>
                     </div>
                     <div style="font-size: 0.8em; color: #94a3b8; margin-top: 4px;">※ゲーム内の盤面やログに即座に反映されます。</div>
+                </div>
+
+                <!-- セクション：プレイヤーアバター変更 -->
+                <div class="settings-section">
+                    <div class="settings-section-title">🖼 プレイヤーアバター変更</div>
+                    <div id="avatar-picker-list" class="avatar-picker-container"></div>
+                    <div style="font-size: 0.8em; color: #94a3b8; margin-top: 4px;">
+                        ※変更したいアバターアイコンをクリックしてください（初期アバターに戻すことはできません）。</div>
                 </div>
 
                 <div style="text-align: right; margin-top: 15px;">
@@ -658,7 +708,17 @@
         let scoreExpiryTimeoutId = null;
         let isTimeBombModalTriggeredByEndTurn = false;
         let lastKnownPlayerNames = {};
-        let showOtherPlayersInfo = true; // 他プレイヤー情報公開フラグ
+        let showOtherPlayersInfo = true;
+
+        // 選択可能なシステムプリセットアバター一覧（デフォルトは選択肢に含めない）
+        let availablePresetAvatars = [
+            { id: 'avatar_1', name: '戦士', image: '/images/avatars/avatar_1.png' },
+            { id: 'avatar_2', name: '魔法使い', image: '/images/avatars/avatar_2.png' },
+            { id: 'avatar_3', name: '僧侶', image: '/images/avatars/avatar_3.png' },
+            { id: 'avatar_4', name: '盗賊', image: '/images/avatars/avatar_4.png' },
+            { id: 'avatar_5', name: '忍者', image: '/images/avatars/avatar_5.png' },
+            { id: 'avatar_6', name: '騎士', image: '/images/avatars/avatar_6.png' }
+        ];
 
         function isLaterPlayerInRound1(actorId, targetId) {
             if (!latestGameState || latestGameState.round !== 1) return false;
@@ -698,6 +758,10 @@
             document.getElementById('status').innerText = `あなたは P${myPlayerNumber} です。他のプレイヤーを待っています...`;
             const nameInput = document.getElementById('user-name-input');
             if (nameInput) nameInput.value = data.name || `P${myPlayerNumber}`;
+            if (data.presetAvatars && data.presetAvatars.length > 0) {
+                availablePresetAvatars = data.presetAvatars;
+            }
+            renderAvatarPicker();
         });
 
         socket.on('playerUpdate', (data) => {
@@ -762,6 +826,7 @@
                 const nameInput = document.getElementById('user-name-input');
                 if (nameInput) nameInput.value = latestGameState.players[myId].name;
             }
+            renderAvatarPicker();
             document.getElementById('user-settings-modal').style.display = 'block';
         }
 
@@ -779,6 +844,30 @@
             }
             socket.emit('changePlayerName', { newName });
             closeUserSettingsModal();
+        }
+
+        function renderAvatarPicker() {
+            const container = document.getElementById('avatar-picker-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const currentAvatarId = (latestGameState && myId && latestGameState.players[myId])
+                ? latestGameState.players[myId].avatar
+                : 'avatar_default';
+
+            availablePresetAvatars.forEach(av => {
+                const img = document.createElement('img');
+                img.src = av.image;
+                img.alt = av.name;
+                img.title = av.name;
+                img.className = `avatar-picker-item ${av.id === currentAvatarId ? 'selected' : ''}`;
+                img.onerror = () => { img.src = '/images/avatars/avatar_default.png'; };
+                img.onclick = () => {
+                    socket.emit('changePlayerAvatar', { avatarId: av.id });
+                    closeUserSettingsModal();
+                };
+                container.appendChild(img);
+            });
         }
 
         function renderCardSwitches() {
@@ -1052,6 +1141,13 @@
                 const hasActed = latestGameState && latestGameState.actedPlayerIds && latestGameState.actedPlayerIds.includes(p.id);
                 const actedBadgeHtml = hasActed ? `<div class="acted-badge">済</div>` : '';
 
+                // アバター画像URLの解決（未変更時はデフォルトアバター、変更後はプリセット画像）
+                let avatarImgSrc = '/images/avatars/avatar_default.png';
+                if (p.avatar && p.avatar !== 'avatar_default') {
+                    const matched = availablePresetAvatars.find(a => a.id === p.avatar);
+                    if (matched) avatarImgSrc = matched.image;
+                }
+
                 // 防御カードの表示HTML生成
                 let defInfo = '<span style="color:#7f8c8d;">なし</span>';
                 if (p.defenseCard) {
@@ -1077,12 +1173,11 @@
                 if (isMe || showOtherPlayersInfo) {
                     infoRowHtml = `<div>手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>`;
                 } else {
-                    // 非公開モード（OFF時）の相手プレイヤー
+                    // 非公開モード（OFF時）の相手プレイヤー：手札枚数は完全非表示、防御カードは発動済みかつ耐久残がある場合のみ表示
                     const hasRevealedActiveDefense = p.defenseCard && p.defenseCard.revealed && p.defenseCard.usesLeft > 0;
                     if (hasRevealedActiveDefense) {
                         infoRowHtml = `<div>防御: ${defInfo}</div>`;
                     }
-                    // 手札枚数は表示しない、防御も非公開時は行ごと非表示
                 }
 
                 const posNames = ['【自分】', '【下家】', '【対面】', '【上家】'];
@@ -1188,9 +1283,12 @@
                 }
 
                 box.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <strong>${posName} ${p.name} ${isMe ? '(あなた)' : ''} ${isTurn ? '★' : ''}${statusBadge}</strong>
-                        <span style="color:#f1c40f; font-weight:bold;"> ${rank}位</span>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                            <img src="${avatarImgSrc}" class="player-avatar-img" alt="avatar" onerror="this.src='/images/avatars/avatar_default.png'">
+                            <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${posName} ${p.name} ${isMe ? '(あなた)' : ''} ${isTurn ? '★' : ''}${statusBadge}</strong>
+                        </div>
+                        <span style="color:#f1c40f; font-weight:bold; flex-shrink:0;"> ${rank}位</span>
                     </div>
                     <div class="player-score" id="player-score-${p.id}" style="font-size: 1.1em; font-weight: bold; margin: 3px 0; color: #38bdf8;">
                         ${scoreDisplayHtml}
