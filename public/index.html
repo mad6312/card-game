@@ -14,7 +14,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 940px;
             margin: 0 auto;
             position: relative;
         }
@@ -177,9 +177,10 @@
             box-sizing: border-box;
         }
 
+        /* 雀卓レイアウト（左右枠を240pxに拡張） */
         .mj-table {
             display: grid;
-            grid-template-columns: 220px 1fr 220px;
+            grid-template-columns: 240px 1fr 240px;
             grid-template-rows: auto 1fr auto;
             grid-template-areas:
                 "left   top    right"
@@ -283,13 +284,15 @@
             z-index: 10;
         }
 
+        /* ステータスバッジラッパー */
         .status-badge-wrapper {
             position: relative;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            margin-left: 5px;
             vertical-align: middle;
+            overflow: visible;
+            flex-shrink: 0;
         }
 
         .status-badge-wrapper:hover {
@@ -305,20 +308,39 @@
             display: block;
         }
 
+        /* 丸囲み数字バッジ（全方位余裕確保・マスク防止） */
         .status-badge-count {
             position: absolute;
-            top: -4px;
-            right: -6px;
+            top: -6px;
+            right: -7px;
             background: #e74c3c;
             color: #ffffff;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: bold;
-            padding: 1px 4px;
-            border-radius: 8px;
-            border: 1px solid #ffffff;
-            line-height: 1;
+            min-width: 17px;
+            height: 17px;
+            padding: 0 3px;
+            box-sizing: border-box;
+            border-radius: 9999px;
+            border: 1.5px solid #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             pointer-events: none;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.7);
+            z-index: 20;
+            line-height: 1;
+        }
+
+        /* バッジ表示専用行コンテナ */
+        .status-badges-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+            min-height: 0;
+            overflow: visible;
         }
 
         .my-hand-container {
@@ -358,7 +380,7 @@
             border-color: #f1c40f;
         }
 
-        /* テンプレート用ツールチップ（非表示にしてJS側で位置計算） */
+        /* テンプレート用ツールチップ */
         .card-tooltip {
             display: none !important;
         }
@@ -710,7 +732,7 @@
         let lastKnownPlayerNames = {};
         let showOtherPlayersInfo = true;
 
-        // 選択可能なシステムプリセットアバター一覧（デフォルトは選択肢に含めない）
+        // 選択可能なシステムプリセットアバター一覧
         let availablePresetAvatars = [
             { id: 'avatar_1', name: '男性', image: '/images/avatars/avatar_1.png' },
             { id: 'avatar_2', name: '女性', image: '/images/avatars/avatar_2.png' },
@@ -967,7 +989,6 @@
 
             const logBox = document.getElementById('log-box');
 
-            // プレイヤーネーム変更の検知と既存ログ内の名前の一括置換同期
             if (data.players && logBox) {
                 Object.values(data.players).forEach(p => {
                     const old = lastKnownPlayerNames[p.id];
@@ -1104,6 +1125,7 @@
             }
         }
 
+        /* プレイヤーUI描画（ハイブリッド2段レイアウト最適化版） */
         function updatePlayersUI(players, currentTurnPlayerId) {
             const now = Date.now();
             const sorted = Object.values(players).sort((a, b) => b.score - a.score);
@@ -1141,14 +1163,14 @@
                 const hasActed = latestGameState && latestGameState.actedPlayerIds && latestGameState.actedPlayerIds.includes(p.id);
                 const actedBadgeHtml = hasActed ? `<div class="acted-badge">済</div>` : '';
 
-                // アバター画像URLの解決（未変更時はデフォルトアバター、変更後はプリセット画像）
+                // アバター画像URL解決
                 let avatarImgSrc = '/images/avatars/avatar_default.png';
                 if (p.avatar && p.avatar !== 'avatar_default') {
                     const matched = availablePresetAvatars.find(a => a.id === p.avatar);
                     if (matched) avatarImgSrc = matched.image;
                 }
 
-                // 防御カードの表示HTML生成
+                // 防御カード表示HTML生成
                 let defInfo = '<span style="color:#7f8c8d;">なし</span>';
                 if (p.defenseCard) {
                     const card = p.defenseCard.card;
@@ -1168,21 +1190,18 @@
                     `;
                 }
 
-                // 手札・防御情報の領域制御（非公開モード時は手札は完全非表示、防御は発動して耐久残存時のみ表示）
+                // 手札・防御情報の領域制御
                 let infoRowHtml = '';
                 if (isMe || showOtherPlayersInfo) {
-                    infoRowHtml = `<div>手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>`;
+                    infoRowHtml = `<div style="margin-top:3px;">手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>`;
                 } else {
-                    // 非公開モード（OFF時）の相手プレイヤー：手札枚数は完全非表示、防御カードは発動済みかつ耐久残がある場合のみ表示
                     const hasRevealedActiveDefense = p.defenseCard && p.defenseCard.revealed && p.defenseCard.usesLeft > 0;
                     if (hasRevealedActiveDefense) {
-                        infoRowHtml = `<div>防御: ${defInfo}</div>`;
+                        infoRowHtml = `<div style="margin-top:3px;">防御: ${defInfo}</div>`;
                     }
                 }
 
-                const posNames = ['【自分】', '【下家】', '【対面】', '【上家】'];
-                const posName = posNames[relativePos];
-
+                // 自分の手札エリア
                 let handHtml = '';
                 if (isMe) {
                     handHtml += `<div style="margin-top:6px;"><b>手札 (クリックして使用)</b>`;
@@ -1212,14 +1231,16 @@
 
                 let scoreDisplayHtml = getPlayerScoreHtml(p, now);
 
-                let statusBadge = '';
+                // ステータスバッジ群の構築（バッジ専用行へ分離配置）
+                let statusBadgesHtml = '';
+
                 if (p.immunityCount > 0) {
-                    statusBadge += `<span style="color:#e74c3c; font-weight:bold; margin-left:5px;">[選択不可:${p.immunityCount}]</span>`;
+                    statusBadgesHtml += `<span style="color:#e74c3c; font-weight:bold; font-size:11px; background:#1e293b; padding:1px 5px; border-radius:4px; border:1px solid #e74c3c; flex-shrink:0;">[選択不可:${p.immunityCount}]</span>`;
                 }
 
                 if (p.invincibleTurns > 0) {
                     if (p.invincibleSource === 'DARK_MATTER') {
-                        statusBadge += `
+                        statusBadgesHtml += `
                             <div class="status-badge-wrapper">
                                 <img src="/images/dark_matter.png" class="status-badge-img" alt="ダークマター">
                                 <div class="card-tooltip">
@@ -1229,7 +1250,7 @@
                             </div>
                         `;
                     } else if (isMe || p.armorRevealed) {
-                        statusBadge += `
+                        statusBadgesHtml += `
                             <div class="status-badge-wrapper">
                                 <img src="/images/invincible_armor.png" class="status-badge-img" alt="無敵アーマー">
                                 <span class="status-badge-count">${p.invincibleTurns}</span>
@@ -1243,7 +1264,7 @@
                 }
 
                 if (p.steroidTurns > 0 && (isMe || p.steroidRevealed)) {
-                    statusBadge += `
+                    statusBadgesHtml += `
                         <div class="status-badge-wrapper">
                             <img src="/images/steroid.png" class="status-badge-img" alt="ステロイド">
                             <span class="status-badge-count">${p.steroidTurns}</span>
@@ -1256,7 +1277,7 @@
                 }
 
                 if (p.darknessTurns > 0) {
-                    statusBadge += `
+                    statusBadgesHtml += `
                         <div class="status-badge-wrapper">
                             <img src="/images/smoke_screen.png" class="status-badge-img" alt="煙幕">
                             <span class="status-badge-count">${p.darknessTurns}</span>
@@ -1270,7 +1291,7 @@
 
                 if (p.timeBombTurns > 0) {
                     const clickAttr = (isMe && isTurn) ? `onclick="openTimeBombModal(false)" style="cursor: pointer;"` : '';
-                    statusBadge += `
+                    statusBadgesHtml += `
                         <div class="status-badge-wrapper" ${clickAttr}>
                             <img src="/images/time_bomb.png" class="status-badge-img" alt="時限爆弾">
                             <span class="status-badge-count">${p.timeBombTurns}</span>
@@ -1282,15 +1303,28 @@
                     `;
                 }
 
+                // バッジ行のHTML（バッジが存在するときのみ表示領域を確保）
+                let badgeRowContainerHtml = '';
+                if (statusBadgesHtml) {
+                    badgeRowContainerHtml = `<div class="status-badges-row">${statusBadgesHtml}</div>`;
+                }
+
+                // 2段構造ハイブリッド最適化レイアウトの組み立て
                 box.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                        <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:3px;">
+                        <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0; margin-right:6px;">
                             <img src="${avatarImgSrc}" class="player-avatar-img" alt="avatar" onerror="this.src='/images/avatars/avatar_default.png'">
-                            <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${posName} ${p.name} ${isMe ? '(あなた)' : ''} ${isTurn ? '★' : ''}${statusBadge}</strong>
+                            <span style="font-weight:bold; font-size:0.95em; word-break:break-all; overflow-wrap:break-word; line-height:1.25;" title="${p.name}">
+                                ${p.name}${isMe ? ' <span style="font-size:0.85em; color:#94a3b8;">(あなた)</span>' : ''}
+                            </span>
                         </div>
-                        <span style="color:#f1c40f; font-weight:bold; flex-shrink:0;"> ${rank}位</span>
+                        <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                            ${isTurn ? '<span style="color:#f1c40f; font-weight:bold;">★</span>' : ''}
+                            <span style="color:#f1c40f; font-weight:bold; font-size:0.95em;">${rank}位</span>
+                        </div>
                     </div>
-                    <div class="player-score" id="player-score-${p.id}" style="font-size: 1.1em; font-weight: bold; margin: 3px 0; color: #38bdf8;">
+                    ${badgeRowContainerHtml}
+                    <div class="player-score" id="player-score-${p.id}" style="font-size: 1.1em; font-weight: bold; margin: 4px 0 2px 0; color: #38bdf8;">
                         ${scoreDisplayHtml}
                     </div>
                     ${infoRowHtml}
@@ -1322,17 +1356,14 @@
                     let left = targetRect.left + (targetRect.width - tooltipWidth) / 2;
                     let top = targetRect.top - tooltipHeight - 8;
 
-                    // 上にはみ出る場合は下側に反転
                     if (top < padding) {
                         top = targetRect.bottom + 8;
                     }
 
-                    // 下にはみ出る場合は画面内に収める
                     if (top + tooltipHeight > window.innerHeight - padding) {
                         top = window.innerHeight - tooltipHeight - padding;
                     }
 
-                    // 左右のはみ出し補正
                     if (left < padding) {
                         left = padding;
                     } else if (left + tooltipWidth > window.innerWidth - padding) {
@@ -1963,17 +1994,11 @@
                     if (candidates.length > 0) {
                         const minDiff = Math.min(...candidates.map(p => p.score - myScore));
                         const closestGroup = candidates.filter(p => (p.score - myScore) === minDiff);
-                        const m = closestGroup.length;
-
-                        if (m === 1) {
-                            displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">100% (必中)</span>`;
-                        } else {
-                            const prob = Math.min(1.0, attackCount / m);
-                            const ratePercent = Math.round(prob * 1000) / 10;
-                            const rateDetailStr = closestGroup.map(p => `${p.name}: ${ratePercent}%`).join(', ');
-                            const countText = (cardId === 'bronze_shield_set' && attackCount > 1) ? ` (${attackCount}回連撃/実質選出率)` : ` (選出確率)`;
-                            displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${countText}</span>`;
-                        }
+                        const count = closestGroup.length;
+                        const indivRate = Math.round((100 / count) * 10) / 10;
+                        const rateDetailStr = closestGroup.map(p => `${p.name}: ${indivRate}%`).join(', ');
+                        const countText = (cardId === 'bronze_shield_set' && attackCount > 1) ? ` (${attackCount}回連撃/実質選出率)` : ` (選出確率)`;
+                        displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${countText}</span>`;
                     }
                     return;
                 } else if (selectEl.value === 'LOWER' && myPlayer) {
@@ -2166,7 +2191,6 @@
             const hasDefense = !!myPlayer.defenseCard;
             let html = '';
 
-            // お守り大判の排他制御チェック
             const hasUsedOtherCard = myPlayer.playedHandCardThisTurn && !myPlayer.playedObanThisTurn;
             const hasUsedOban = myPlayer.playedObanThisTurn;
 
