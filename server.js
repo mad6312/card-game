@@ -2,184 +2,25 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 
+const {
+    CARD_DECK,
+    DEFAULT_AVATAR_ID,
+    PRESET_AVATARS,
+    createInitialCardSettings,
+    getRandomAvailableCard
+} = require('./cards');
+
+const battle = require('./battle');
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static('public'));
 
-const CARD_DECK = [
-    {
-        id: 'wood_shield',
-        name: '木の盾',
-        category: 'DEFENSE',
-        image: '/images/wood_shield.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
-    },
-    {
-        id: 'wood_shield_set',
-        name: '木の盾セット',
-        category: 'DEFENSE',
-        image: '/images/wood_shield_set.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
-    },
-    {
-        id: 'bronze_shield',
-        name: '青銅の盾',
-        category: 'DEFENSE',
-        image: '/images/bronze_shield.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
-    },
-    {
-        id: 'bronze_shield_set',
-        name: '青銅の盾セット',
-        category: 'DEFENSE',
-        image: '/images/bronze_shield_set.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
-    },
-    {
-        id: 'wood_sword',
-        name: '木の剣',
-        category: 'ATTACK',
-        image: '/images/wood_sword.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。'
-    },
-    {
-        id: 'wood_sword_set',
-        name: '木の剣セット',
-        category: 'ATTACK',
-        image: '/images/wood_sword_set.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n\n【残り回数】3回'
-    },
-    {
-        id: 'shotgun',
-        name: 'ショットガン',
-        category: 'ATTACK',
-        image: '/images/shotgun.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】50%'
-    },
-    {
-        id: 'grenade',
-        name: 'グレネード',
-        category: 'ATTACK',
-        image: '/images/grenade.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分との得点差が-5,000点以内の相手全員\n【追加対象】上記対象との得点差が1,000点以内のプレイヤー（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、さらに5,000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】\n上：50%\n下：80%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n【追加効果】無効化時、自分との得点差が-1,000点以内の相手全員の手札・防御カードをすべて破棄し、さらに5,000点ダメージを与える。'
-    },
-    {
-        id: 'diamond_sword',
-        name: 'ダイヤの剣',
-        category: 'ATTACK',
-        image: '/images/diamond_sword.png',
-        desc: '【対象】1位、および1位と得点差が±1,000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、5,000点ダメージを与える。'
-    },
-    {
-        id: 'earthquake',
-        name: '地震',
-        category: 'ATTACK',
-        image: '/images/earthquake.png',
-        desc: '【使用時】自分と同点以上の相手全員に1,000点/3,000点(各50%)ダメージを与える。\n【追加効果】対象の手札・防御カードをすべて破棄する。'
-    },
-    {
-        id: 'time_bomb',
-        name: '時限爆弾',
-        category: 'SPECIAL',
-        image: '/images/time_bomb.png',
-        desc: '【ドロー時】即時発動(+1,000点)。8ターン後に爆発(-6,000点/手札防御全破棄/選択不可2T)。自ターン開始毎+1,000点。±3,000点差の相手に50%で受け渡し可能。無敵・ステロイドで消滅。'
-    },
-    {
-        id: 'omamori_koban',
-        name: 'お守り小判',
-        category: 'SPECIAL',
-        image: '/images/omamori_koban.png',
-        desc: '【使用時】自分の得点を+3,000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費して「ダイヤの剣」の効果を無効化し、さらに自分の得点を+3,000点する。'
-    },
-    {
-        id: 'omamori_koban_set',
-        name: 'お守り小判セット',
-        category: 'SPECIAL',
-        image: '/images/omamori_koban_set.png',
-        desc: '【使用時】自分の得点を+2,000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、自動で1回分消費し、「ダイヤの剣」を回避した上で自分の得点を+2,000点する。\n【残り回数】3回'
-    },
-    {
-        id: 'omamori_oban',
-        name: 'お守り大判',
-        category: 'SPECIAL',
-        image: '/images/omamori_oban.png',
-        desc: '【使用時】自分の得点を+3,000点〜+8,000点の範囲で選択して加算する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費し、「ダイヤの剣」を回避した上で自分の得点を+8,000点する。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
-    },
-    {
-        id: 'disaster',
-        name: '大災害',
-        category: 'ATTACK',
-        image: '/images/disaster.png',
-        desc: '【使用時】相手全員に順位に応じたダメージを与える。\n1位:6,000点/2位:4,000点/3位:2,000点/4位:1,000点\n【追加効果】対象の手札・防御カードをすべて破棄する。'
-    },
-    {
-        id: 'invincible_armor',
-        name: '無敵アーマー',
-        category: 'SPECIAL',
-        image: '/images/invincible_armor.png',
-        desc: '【使用時】4ターンの間、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる（対戦相手には非公開）。\n【追加効果】このカードによる「無敵状態」解除時、自分の得点を+1,000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3,000点ダメージを与える。'
-    },
-    {
-        id: 'dark_matter',
-        name: 'ダークマター',
-        category: 'SPECIAL',
-        image: '/images/dark_matter.png',
-        desc: '【使用時】自分の得点を+5,000点し、次の自分のターン開始時まで、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる。\n【追加効果】このカードの使用により得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3,000点ダメージを与える。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
-    },
-    {
-        id: 'steroid',
-        name: 'ステロイド',
-        category: 'SPECIAL',
-        image: '/images/steroid.png',
-        desc: '【使用時】4ターンの間、一部を除く攻撃カードの効果を受けなくなる「ステロイド状態」になる（対戦相手には非公開）。\n【追加効果】「ステロイド状態」解除時、自分の得点を+1,000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3,000点ダメージを与える。'
-    },
-    {
-        id: 'smoke_screen',
-        name: '煙幕',
-        category: 'ATTACK',
-        image: '/images/smoke_screen.png',
-        desc: '【使用時】自分以上の得点を持つ相手全員に1,000点ダメージを与える。\n【追加効果】対象に攻撃カード使用時の命中率が半減される「暗闇状態」を付与する。「暗闇状態」は対象プレイヤーのターン終了時まで継続する。'
-    }
-];
-
-// デフォルト共通アバターID
-const DEFAULT_AVATAR_ID = 'avatar_default';
-
-// 選択可能なシステムプリセットアバター一覧
-const PRESET_AVATARS = [
-    { id: 'avatar_1', name: '男性', image: '/images/avatars/avatar_1.png' },
-    { id: 'avatar_2', name: '女性', image: '/images/avatars/avatar_2.png' },
-    { id: 'avatar_3', name: '少年', image: '/images/avatars/avatar_3.png' },
-    { id: 'avatar_4', name: '少女', image: '/images/avatars/avatar_4.png' },
-    { id: 'avatar_5', name: 'ニワトリ', image: '/images/avatars/avatar_5.png' },
-    { id: 'avatar_6', name: '牛', image: '/images/avatars/avatar_6.png' }
-];
-
-let cardSettings = {
-    omamori_koban: true,
-    omamori_koban_set: true,
-    omamori_oban: true,
-    wood_sword: true,
-    wood_sword_set: true,
-    shotgun: true,
-    grenade: true,
-    diamond_sword: true,
-    earthquake: true,
-    time_bomb: true,
-    wood_shield: true,
-    wood_shield_set: true,
-    bronze_shield: true,
-    bronze_shield_set: true,
-    disaster: true,
-    invincible_armor: true,
-    dark_matter: true,
-    steroid: true,
-    smoke_screen: true
-};
-
+let cardSettings = createInitialCardSettings();
 let showOtherPlayersInfo = true;
+let skipBonusModal = true;
 
 function createInitialState() {
     return {
@@ -201,45 +42,6 @@ function createInitialState() {
 
 let gameState = createInitialState();
 
-function resetScoreChanges() {
-    Object.values(gameState.players).forEach(p => {
-        p.scoreChange = 0;
-    });
-}
-
-function applyScoreChange(player, amount) {
-    player.prevScore = player.score;
-    player.scoreChange = amount;
-    player.score += amount;
-}
-
-function getRandomAvailableCard(player) {
-    let availableCards = CARD_DECK.filter(c => cardSettings[c.id] !== false);
-
-    if (player) {
-        const setCardIds = ['wood_shield_set', 'bronze_shield_set', 'wood_sword_set'];
-        const hasAnySetInHand = player.hand && player.hand.some(c => setCardIds.includes(c.id));
-        const hasAnySetInDefense = player.defenseCard && player.defenseCard.card && setCardIds.includes(player.defenseCard.card.id);
-
-        if (hasAnySetInHand || hasAnySetInDefense) {
-            availableCards = availableCards.filter(c => !setCardIds.includes(c.id));
-        }
-    }
-
-    const pool = availableCards.length > 0 ? availableCards : CARD_DECK;
-    const template = pool[Math.floor(Math.random() * pool.length)];
-    const instance = {
-        ...template,
-        instanceId: 'card_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
-    };
-
-    if (instance.id === 'wood_shield_set' || instance.id === 'bronze_shield_set' || instance.id === 'wood_sword_set' || instance.id === 'omamori_koban_set') {
-        instance.usesLeft = 3;
-    }
-
-    return instance;
-}
-
 function getSyncPayload(customLog = '') {
     return {
         players: gameState.players,
@@ -259,7 +61,6 @@ function broadcastGameState(customLog = '') {
 
 function skipDraftAndStartGame() {
     const playerIds = Object.keys(gameState.players);
-
     playerIds.forEach((id) => {
         const p = gameState.players[id];
         p.score = 25000;
@@ -272,7 +73,6 @@ function skipDraftAndStartGame() {
     gameState.draft.phase = 'FINISHED';
     gameState.round = 1;
     gameState.actedPlayerIds = [];
-
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
@@ -346,7 +146,6 @@ function resolveDraft() {
 
 function getNextPlayerId() {
     const allPlayers = Object.values(gameState.players);
-
     const unactedPlayers = allPlayers.filter(p => !gameState.actedPlayerIds.includes(p.id));
     if (unactedPlayers.length === 0) return null;
 
@@ -402,272 +201,8 @@ function skipIfImmuneToRound1CardEffect(target, caster, cardLabel) {
     return true;
 }
 
-function isDefenseBlocked(target, attacker) {
-    if (!target.defenseCard) return false;
-    const isRestricted = ['wood_sword', 'wood_sword_set', 'grenade'].includes(target.defenseCard.card.id);
-    return isRestricted && (attacker.score > target.score);
-}
-
-function executeGrenadeDefenseCounter(defenderId) {
-    const defender = gameState.players[defenderId];
-    if (!defender) return;
-
-    const myScore = defender.score;
-    const allPlayers = Object.values(gameState.players);
-
-    const targets = allPlayers.filter(p => p.id !== defenderId && p.score <= myScore && (myScore - p.score) <= 1000);
-    if (targets.length === 0) return;
-
-    const counterLogs = [];
-
-    targets.forEach(target => {
-        const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
-        const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-        const isImmune = target.immunityCount && target.immunityCount > 0;
-
-        if (isInvincible || isSteroid || isImmune) {
-            if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            if (isSteroid) target.steroidRevealed = true;
-
-            let defMsg = '';
-            if (target.defenseCard) {
-                target.defenseCard = null;
-                defMsg = '防御カード破棄';
-            }
-            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
-            counterLogs.push(`${target.name}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
-        } else {
-            target.hand = [];
-            target.defenseCard = null;
-            applyScoreChange(target, -5000);
-            target.immunityCount = 2;
-            counterLogs.push(`${target.name}(-5,000点・手札防御全破棄・選択不可2T)`);
-        }
-    });
-
-    broadcastGameState(`💥 ${defender.name} の「グレネード」カウンター発動！ 反撃対象: ${counterLogs.join(' / ')}`);
-}
-
-function executeGrenadeSplash(primaryTargetId, casterId) {
-    const primaryTarget = gameState.players[primaryTargetId];
-    const caster = gameState.players[casterId];
-    if (!primaryTarget || !caster) return;
-
-    const centerScore = primaryTarget.score;
-    const allPlayers = Object.values(gameState.players);
-
-    const victims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
-    const affectedLogs = [];
-
-    victims.forEach(victim => {
-        if (victim.id !== casterId && isImmuneToRound1CardEffect(victim.id, casterId)) {
-            affectedLogs.push(`${victim.name}(1巡目効果無効)`);
-            return;
-        }
-
-        const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
-        const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
-        const isImmune = victim.immunityCount && victim.immunityCount > 0;
-
-        if (isInvincible || isSteroid || isImmune) {
-            if (isInvincible && victim.invincibleSource === 'ARMOR') victim.armorRevealed = true;
-            if (isSteroid) victim.steroidRevealed = true;
-
-            let defMsg = '';
-            if (victim.defenseCard) {
-                victim.defenseCard = null;
-                defMsg = '防御カード破棄';
-            }
-            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
-            affectedLogs.push(`${victim.name}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
-        } else {
-            victim.hand = [];
-            victim.defenseCard = null;
-            applyScoreChange(victim, -5000);
-            victim.immunityCount = 2;
-            affectedLogs.push(`${victim.name}(-5,000点・手札防御全破棄・選択不可2T)`);
-        }
-    });
-
-    broadcastGameState(`💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`);
-}
-
-function executeGrenadeSingleAttack(attackerId, targetId) {
-    const attacker = gameState.players[attackerId];
-    const target = gameState.players[targetId];
-    if (!attacker || !target) return;
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「グレネード」攻撃')) return;
-
-    const scoreDiff = target.score - attacker.score;
-    if (scoreDiff < 0 || scoreDiff > 5000) {
-        const socket = io.sockets.sockets.get(attackerId);
-        if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
-        }
-        return;
-    }
-
-    let baseHitRate = 0.5;
-    if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-        baseHitRate = 0.25;
-    }
-    let logPrefix = `${attacker.name} が ${target.name} に「グレネード」で攻撃！ `;
-    const isHit = Math.random() < baseHitRate;
-
-    if (!isHit) {
-        broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-        return;
-    }
-
-    let penetrateMsg = '';
-    if (target.defenseCard) {
-        penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
-    }
-
-    broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 命中着弾！${penetrateMsg}`);
-    executeGrenadeSplash(target.id, attackerId);
-}
-
-function executeGrenadeGroupAttack(attackerId) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) return;
-
-    const myScore = attacker.score;
-    const allPlayers = Object.values(gameState.players);
-
-    let candidates = allPlayers.filter(p => {
-        if (p.id === attackerId) return false;
-        if (p.immunityCount && p.immunityCount > 0) return false;
-        if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-        const diff = myScore - p.score;
-        return diff >= 1 && diff <= 5000;
-    });
-
-    if (candidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「グレネード」で攻撃を開始しましたが、対象となる下位プレイヤー（-1〜-5,000点以内）がいませんでした。`);
-        return;
-    }
-
-    const grouped = {};
-    candidates.forEach(p => {
-        const diff = Math.abs(myScore - p.score);
-        if (!grouped[diff]) grouped[diff] = [];
-        grouped[diff].push(p);
-    });
-
-    const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-    const attackQueue = [];
-
-    sortedDiffs.forEach(diff => {
-        const group = grouped[diff];
-        for (let i = group.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [group[i], group[j]] = [group[j], group[i]];
-        }
-        attackQueue.push(...group);
-    });
-
-    function processQueue(index) {
-        if (index >= attackQueue.length) {
-            broadcastGameState(`${attacker.name} の「グレネード」攻撃は誰にも命中せず終了しました。`);
-            return;
-        }
-
-        const target = gameState.players[attackQueue[index].id];
-        if (!target) {
-            processQueue(index + 1);
-            return;
-        }
-
-        if (skipIfImmuneToRound1CardEffect(target, attacker, '「グレネード」攻撃')) {
-            processQueue(index + 1);
-            return;
-        }
-
-        let baseHitRate = 0.8;
-        if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-            baseHitRate = 0.4;
-        }
-
-        const ratePercent = Math.round(baseHitRate * 100);
-        let logPrefix = `${attacker.name} の「グレネード」攻撃 (対象: ${target.name})！ `;
-
-        const isHit = Math.random() < baseHitRate;
-
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-            setTimeout(() => processQueue(index + 1), 500);
-            return;
-        }
-
-        let penetrateMsg = '';
-        if (target.defenseCard) {
-            penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
-        }
-
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中着弾！${penetrateMsg}`);
-        executeGrenadeSplash(target.id, attackerId);
-    }
-
-    processQueue(0);
-}
-
-function handleBuffExpire(player, buffType) {
-    const cardName = buffType === 'ARMOR' ? '無敵アーマー' : 'ステロイド';
-    const prevMyScore = player.score;
-
-    if (buffType === 'ARMOR') {
-        player.armorRevealed = false;
-    } else {
-        player.steroidRevealed = false;
-    }
-
-    applyScoreChange(player, 1000);
-    const newMyScore = player.score;
-
-    const penalizedNames = [];
-
-    Object.values(gameState.players).forEach(opponent => {
-        if (opponent.id === player.id) return;
-        if (isImmuneToRound1CardEffect(opponent.id, player.id)) return;
-
-        const isInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
-        const isImmune = opponent.immunityCount && opponent.immunityCount > 0;
-        const isSteroid = opponent.steroidTurns && opponent.steroidTurns > 0;
-
-        if (isInvincible || isImmune) return;
-        if (buffType === 'STERIOD' && isSteroid) return;
-
-        const isConditionA = (opponent.score === prevMyScore);
-        const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
-
-        if (isConditionA || isConditionB) {
-            const isSuccess = Math.random() < 0.5;
-
-            if (isSuccess) {
-                opponent.hand = [];
-                opponent.defenseCard = null;
-                applyScoreChange(opponent, -3000);
-                opponent.immunityCount = 2;
-
-                penalizedNames.push(`${opponent.name}(成功)`);
-            } else {
-                penalizedNames.push(`${opponent.name}(不発)`);
-            }
-        }
-    });
-
-    let logMsg = `${player.name} の「${cardName}」が解除され、+1,000点獲得！`;
-    if (penalizedNames.length > 0) {
-        logMsg += ` ペナルティ結果: ${penalizedNames.join(', ')}`;
-    }
-
-    return logMsg;
-}
-
 function proceedToNextTurn() {
-    resetScoreChanges();
+    battle.resetScoreChanges(gameState);
 
     const currId = gameState.currentTurnPlayerId;
     const currPlayer = currId ? gameState.players[currId] : null;
@@ -687,22 +222,27 @@ function proceedToNextTurn() {
     });
 
     const expireLogs = [];
+    let hasScoreChangeOnExpire = false;
+
+    // 1. バフ解除・時限爆弾処理
     Object.values(gameState.players).forEach(p => {
         if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
             p.invincibleTurns -= 1;
             if (p.invincibleTurns === 0) {
                 p.invincibleSource = null;
                 p.armorRevealed = false;
-                const msg = handleBuffExpire(p, 'ARMOR');
+                const msg = battle.handleBuffExpire(gameState, p, 'ARMOR', isImmuneToRound1CardEffect);
                 if (msg) expireLogs.push(msg);
+                hasScoreChangeOnExpire = true;
             }
         }
         if (p.steroidTurns > 0) {
             p.steroidTurns -= 1;
             if (p.steroidTurns === 0) {
                 p.steroidRevealed = false;
-                const msg = handleBuffExpire(p, 'STERIOD');
+                const msg = battle.handleBuffExpire(gameState, p, 'STERIOD', isImmuneToRound1CardEffect);
                 if (msg) expireLogs.push(msg);
+                hasScoreChangeOnExpire = true;
             }
         }
         if (p.timeBombTurns > 0) {
@@ -711,59 +251,67 @@ function proceedToNextTurn() {
             } else {
                 p.timeBombTurns -= 1;
                 if (p.timeBombTurns === 0) {
-                    applyScoreChange(p, -6000);
+                    battle.applyScoreChange(p, -6000);
                     p.hand = [];
                     p.defenseCard = null;
                     p.immunityCount = 2;
                     expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発！ -6,000点、手札・防御全破棄、選択不可(2T)付与！`);
+                    hasScoreChangeOnExpire = true;
                 }
             }
         }
     });
 
-    if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
-        gameState.round += 1;
-        gameState.actedPlayerIds = [];
+    function finalizeNextTurn() {
+        if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
+            gameState.round += 1;
+            gameState.actedPlayerIds = [];
 
-        if (gameState.round > 10) {
-            broadcastGameState('全10巡が終了しました！ゲーム終了！');
-            return;
-        }
-    }
-
-    const nextPlayerId = getNextPlayerId();
-    gameState.currentTurnPlayerId = nextPlayerId;
-    gameState.turnPhase = 'BONUS_CHOICE';
-
-    if (nextPlayerId) {
-        const nextPlayer = gameState.players[nextPlayerId];
-        nextPlayer.bombTransferAttempted = false;
-        nextPlayer.bombDrawnThisTurn = false;
-        nextPlayer.playedHandCardThisTurn = false;
-        nextPlayer.playedObanThisTurn = false;
-        nextPlayer.playedDarkMatterThisTurn = false;
-
-        if (nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
-            nextPlayer.invincibleTurns = 0;
-            nextPlayer.invincibleSource = null;
-        }
-
-        if (nextPlayer.timeBombTurns > 0) {
-            if (nextPlayer.invincibleTurns > 0 || nextPlayer.steroidTurns > 0) {
-                nextPlayer.timeBombTurns = 0;
-            } else if (!nextPlayer.bombDrawnThisTurn) {
-                applyScoreChange(nextPlayer, 1000);
-                expireLogs.push(`${nextPlayer.name} の「時限爆弾」保持ボーナス: +1,000点獲得！`);
+            if (gameState.round > 10) {
+                broadcastGameState('全10巡が終了しました！ゲーム終了！');
+                return;
             }
         }
+
+        const nextPlayerId = getNextPlayerId();
+        gameState.currentTurnPlayerId = nextPlayerId;
+        gameState.turnPhase = 'BONUS_CHOICE';
+
+        if (nextPlayerId) {
+            const nextPlayer = gameState.players[nextPlayerId];
+            nextPlayer.bombTransferAttempted = false;
+            nextPlayer.bombDrawnThisTurn = false;
+            nextPlayer.playedHandCardThisTurn = false;
+            nextPlayer.playedObanThisTurn = false;
+            nextPlayer.playedDarkMatterThisTurn = false;
+
+            if (nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
+                nextPlayer.invincibleTurns = 0;
+                nextPlayer.invincibleSource = null;
+            }
+
+            if (nextPlayer.timeBombTurns > 0) {
+                if (nextPlayer.invincibleTurns > 0 || nextPlayer.steroidTurns > 0) {
+                    nextPlayer.timeBombTurns = 0;
+                } else if (!nextPlayer.bombDrawnThisTurn) {
+                    battle.applyScoreChange(nextPlayer, 1000);
+                    expireLogs.push(`${nextPlayer.name} の「時限爆弾」保持ボーナス: +1,000点獲得！`);
+                }
+            }
+        }
+
+        let finalLog = expireLogs.length > 0 ? expireLogs.join('\n') + '\n' : '';
+        finalLog += `${gameState.players[gameState.currentTurnPlayerId].name} のターンになりました。`;
+        broadcastGameState(finalLog);
     }
 
-    let finalLog = expireLogs.length > 0 ? expireLogs.join('\n') + '\n' : '';
-    finalLog += `${gameState.players[gameState.currentTurnPlayerId].name} のターンになりました。`;
-    broadcastGameState(finalLog);
+    if (hasScoreChangeOnExpire) {
+        broadcastGameState(expireLogs.join('\n'));
+        setTimeout(finalizeNextTurn, 650);
+    } else {
+        finalizeNextTurn();
+    }
 }
-
-let skipBonusModal = true;
 
 io.on('connection', (socket) => {
     console.log('接続:', socket.id);
@@ -828,7 +376,6 @@ io.on('connection', (socket) => {
 
         const oldName = player.name;
         player.name = trimmed.slice(0, 10);
-
         broadcastGameState(`[設定] 「${oldName}」がプレイヤー名を「${player.name}」に変更しました。`);
     });
 
@@ -861,7 +408,7 @@ io.on('connection', (socket) => {
         const target = gameState.players[targetPlayerId];
         if (!target) return;
 
-        resetScoreChanges();
+        battle.resetScoreChanges(gameState);
         target.prevScore = target.score;
 
         if (setDirect) {
@@ -880,12 +427,11 @@ io.on('connection', (socket) => {
         const target = gameState.players[targetPlayerId];
         if (!target) return;
 
-        resetScoreChanges();
-
-        const randomCard = getRandomAvailableCard(target);
+        battle.resetScoreChanges(gameState);
+        const randomCard = getRandomAvailableCard(target, cardSettings);
 
         if (randomCard.id === 'time_bomb') {
-            applyScoreChange(target, 1000);
+            battle.applyScoreChange(target, 1000);
             target.timeBombTurns = 8;
             target.bombDrawnThisTurn = true;
 
@@ -925,28 +471,26 @@ io.on('connection', (socket) => {
     });
 
     socket.emit('updateBonusSkipSetting', skipBonusModal);
-
     socket.on('toggleBonusSkipSetting', (enabled) => {
         skipBonusModal = enabled;
         io.emit('updateBonusSkipSetting', skipBonusModal);
     });
 
     socket.on('chooseBonus', (acceptBonus) => {
-        resetScoreChanges();
+        battle.resetScoreChanges(gameState);
         const currentTurnId = gameState.currentTurnPlayerId;
         if (socket.id !== currentTurnId || gameState.turnPhase !== 'BONUS_CHOICE') return;
 
         const player = gameState.players[socket.id];
-        if (acceptBonus) applyScoreChange(player, 3000);
+        if (acceptBonus) battle.applyScoreChange(player, 3000);
 
-        const randomCard = getRandomAvailableCard(player);
+        const randomCard = getRandomAvailableCard(player, cardSettings);
         gameState.turnPhase = 'MAIN';
 
         if (randomCard.id === 'time_bomb') {
-            applyScoreChange(player, 1000);
+            battle.applyScoreChange(player, 1000);
             player.timeBombTurns = 8;
             player.bombDrawnThisTurn = true;
-
             const bonusLog = acceptBonus ? ' (+3,000点獲得)' : '';
 
             if (player.invincibleTurns > 0 || player.steroidTurns > 0) {
@@ -960,7 +504,6 @@ io.on('connection', (socket) => {
             player.hand.push(randomCard);
             const bonusLog = acceptBonus ? ' (+3,000点獲得)' : '';
             socket.emit('syncGameState', getSyncPayload(`「${randomCard.name}」を獲得しました。${bonusLog}`));
-
             const otherLog = showOtherPlayersInfo ? `${player.name} がカードを1枚獲得しました。${bonusLog}` : '';
             socket.broadcast.emit('syncGameState', getSyncPayload(otherLog));
         }
@@ -1001,7 +544,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playCard', ({ instanceId, actionTarget, targetPlayerId, attackCount, chosenScore }) => {
-        resetScoreChanges();
+        battle.resetScoreChanges(gameState);
 
         const currentTurnId = gameState.currentTurnPlayerId;
         if (socket.id !== currentTurnId || gameState.turnPhase !== 'MAIN') {
@@ -1023,7 +566,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // 排他制御チェック（お守り大判 / ダークマター / 同種カード連続使用禁止）
         if (player.playedObanThisTurn) {
             socket.emit('errorMessage', '「お守り大判」を使用したため発動できません。');
             return;
@@ -1039,7 +581,7 @@ io.on('connection', (socket) => {
 
         if (card.id === 'omamori_oban') {
             const addPoints = Math.min(Math.max(Number(chosenScore) || 8000, 3000), 8000);
-            applyScoreChange(player, addPoints);
+            battle.applyScoreChange(player, addPoints);
             player.playedHandCardThisTurn = true;
             player.playedObanThisTurn = true;
             player.hand.splice(cardIndex, 1);
@@ -1052,14 +594,14 @@ io.on('connection', (socket) => {
             player.playedDarkMatterThisTurn = true;
             player.hand.splice(cardIndex, 1);
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
-            executeDarkMatter(socket.id);
+            battle.executeDarkMatter(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect);
             return;
         }
 
         player.playedHandCardThisTurn = true;
 
         if (card.id === 'omamori_koban') {
-            applyScoreChange(player, 3000);
+            battle.applyScoreChange(player, 3000);
             player.hand.splice(cardIndex, 1);
             broadcastGameState(`${player.name} が「お守り小判」を使用し、+3,000点獲得しました！`);
         } else if (card.id === 'omamori_koban_set') {
@@ -1067,7 +609,7 @@ io.on('connection', (socket) => {
             const count = Math.min(Math.max(Number(attackCount) || 1, 1), card.usesLeft);
             const addPoints = count * 2000;
             card.usesLeft -= count;
-            applyScoreChange(player, addPoints);
+            battle.applyScoreChange(player, addPoints);
 
             let msg = `${player.name} が「お守り小判セット」を${count}回分使用し、+${addPoints.toLocaleString()}点獲得しました！`;
             if (card.usesLeft <= 0) {
@@ -1077,13 +619,13 @@ io.on('connection', (socket) => {
             broadcastGameState(msg);
         } else if (card.id === 'disaster') {
             player.hand.splice(cardIndex, 1);
-            executeDisasterAttack(socket.id);
+            battle.executeDisasterAttack(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'diamond_sword') {
             player.hand.splice(cardIndex, 1);
-            executeDiamondSword(socket.id);
+            battle.executeDiamondSword(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'earthquake') {
             player.hand.splice(cardIndex, 1);
-            executeEarthquake(socket.id);
+            battle.executeEarthquake(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'invincible_armor') {
             player.invincibleTurns = 4;
             player.invincibleSource = 'ARMOR';
@@ -1103,7 +645,7 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('syncGameState', getSyncPayload(''));
         } else if (card.id === 'smoke_screen') {
             player.hand.splice(cardIndex, 1);
-            executeSmokeScreen(socket.id);
+            battle.executeSmokeScreen(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (actionTarget === 'ATTACK') {
             if (!targetPlayerId) {
                 socket.emit('errorMessage', '攻撃対象を選択してください。');
@@ -1112,13 +654,13 @@ io.on('connection', (socket) => {
 
             if (card.id === 'wood_shield' && (targetPlayerId === 'EQUAL_OR_HIGHER' || targetPlayerId === 'LOWER')) {
                 player.hand.splice(cardIndex, 1);
-                executeWoodShieldGroupAttack(socket.id, targetPlayerId);
+                battle.executeWoodShieldGroupAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             } else if (card.id === 'bronze_shield') {
                 player.hand.splice(cardIndex, 1);
                 if (targetPlayerId === 'CLOSEST_HIGHER') {
-                    executeBronzeShieldClosestAttack(socket.id);
+                    battle.executeBronzeShieldClosestAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
                 } else if (targetPlayerId === 'LOWER') {
-                    executeBronzeShieldGroupAttack(socket.id);
+                    battle.executeBronzeShieldGroupAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
                 }
             } else if (card.id === 'bronze_shield_set') {
                 let cardObj = player.hand[cardIndex];
@@ -1127,7 +669,7 @@ io.on('connection', (socket) => {
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
                 if (targetPlayerId === 'CLOSEST_HIGHER') {
-                    executeBronzeShieldSetAttack(socket.id, cardObj, maxAttacks, () => {
+                    battle.executeBronzeShieldSetAttack(gameState, socket.id, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                         setTimeout(() => {
                             if (cardObj.usesLeft <= 0) {
                                 const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
@@ -1137,7 +679,7 @@ io.on('connection', (socket) => {
                         }, 550);
                     });
                 } else if (targetPlayerId === 'LOWER') {
-                    executeBronzeShieldSetGroupAttack(socket.id, cardObj, maxAttacks, () => {
+                    battle.executeBronzeShieldSetGroupAttack(gameState, socket.id, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                         setTimeout(() => {
                             if (cardObj.usesLeft <= 0) {
                                 const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
@@ -1150,9 +692,9 @@ io.on('connection', (socket) => {
             } else if (card.id === 'grenade') {
                 player.hand.splice(cardIndex, 1);
                 if (targetPlayerId === 'ALL_LOWER') {
-                    executeGrenadeGroupAttack(socket.id);
+                    battle.executeGrenadeGroupAttack(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
                 } else {
-                    executeGrenadeSingleAttack(socket.id, targetPlayerId);
+                    battle.executeGrenadeSingleAttack(gameState, socket.id, targetPlayerId, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket);
                 }
             } else if (card.id === 'wood_shield_set' && (targetPlayerId === 'EQUAL_OR_HIGHER' || targetPlayerId === 'LOWER')) {
                 let cardObj = player.hand[cardIndex];
@@ -1160,13 +702,11 @@ io.on('connection', (socket) => {
                 const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
-                executeShieldSetGroupAttack(socket.id, targetPlayerId, cardObj, maxAttacks, () => {
+                battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                     setTimeout(() => {
                         if (cardObj.usesLeft <= 0) {
                             const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                            if (idx !== -1) {
-                                player.hand.splice(idx, 1);
-                            }
+                            if (idx !== -1) player.hand.splice(idx, 1);
                         }
                         broadcastGameState();
                     }, 550);
@@ -1178,13 +718,11 @@ io.on('connection', (socket) => {
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
                 if (targetPlayerId === 'ALL_LOWER') {
-                    executeWoodSwordSetGroupAttack(socket.id, cardObj, maxAttacks, () => {
+                    battle.executeWoodSwordSetGroupAttack(gameState, socket.id, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                         setTimeout(() => {
                             if (cardObj.usesLeft <= 0) {
                                 const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) {
-                                    player.hand.splice(idx, 1);
-                                }
+                                if (idx !== -1) player.hand.splice(idx, 1);
                             }
                             broadcastGameState();
                         }, 550);
@@ -1201,13 +739,11 @@ io.on('connection', (socket) => {
                     }
                     if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
-                    executeWoodSwordSetAttack(socket.id, targetPlayerId, cardObj, maxAttacks, () => {
+                    battle.executeWoodSwordSetAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, () => {
                         setTimeout(() => {
                             if (cardObj.usesLeft <= 0) {
                                 const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) {
-                                    player.hand.splice(idx, 1);
-                                }
+                                if (idx !== -1) player.hand.splice(idx, 1);
                             }
                             broadcastGameState();
                         }, 550);
@@ -1216,7 +752,7 @@ io.on('connection', (socket) => {
             } else if (card.id === 'wood_sword') {
                 if (targetPlayerId === 'ALL_LOWER') {
                     player.hand.splice(cardIndex, 1);
-                    executeWoodSwordAttack(socket.id, targetPlayerId);
+                    battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 } else {
                     const target = gameState.players[targetPlayerId];
                     if (!target) {
@@ -1230,11 +766,11 @@ io.on('connection', (socket) => {
                     if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
                     player.hand.splice(cardIndex, 1);
-                    executeWoodSwordAttack(socket.id, targetPlayerId);
+                    battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 }
             } else if (card.id === 'shotgun') {
                 player.hand.splice(cardIndex, 1);
-                executeShotgunAttack(socket.id, targetPlayerId);
+                battle.executeShotgunAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
             } else {
                 const target = gameState.players[targetPlayerId];
                 if (!target) {
@@ -1256,20 +792,18 @@ io.on('connection', (socket) => {
                     const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
                     const actualAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
-                    executeShieldSetAttack(socket.id, targetPlayerId, cardObj, actualAttacks, () => {
+                    battle.executeShieldSetAttack(gameState, socket.id, targetPlayerId, cardObj, actualAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, () => {
                         setTimeout(() => {
                             if (cardObj.usesLeft <= 0) {
                                 const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) {
-                                    player.hand.splice(idx, 1);
-                                }
+                                if (idx !== -1) player.hand.splice(idx, 1);
                             }
                             broadcastGameState();
                         }, 550);
                     });
                 } else {
                     player.hand.splice(cardIndex, 1);
-                    executeStandardAttack(socket.id, targetPlayerId, card.id);
+                    battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, broadcastGameState, skipIfImmuneToRound1CardEffect);
                 }
             }
         } else if (actionTarget === 'DEFENSE') {
@@ -1298,7 +832,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playDefenseAsAttack', ({ targetPlayerId, attackCount }) => {
-        resetScoreChanges();
+        battle.resetScoreChanges(gameState);
         const currentTurnId = gameState.currentTurnPlayerId;
         if (socket.id !== currentTurnId || gameState.turnPhase !== 'MAIN') {
             socket.emit('errorMessage', 'メインフェーズでのみ使用できます。');
@@ -1316,16 +850,16 @@ io.on('connection', (socket) => {
 
         if (card.id === 'wood_shield' && (targetPlayerId === 'EQUAL_OR_HIGHER' || targetPlayerId === 'LOWER')) {
             player.defenseCard = null;
-            executeWoodShieldGroupAttack(socket.id, targetPlayerId);
+            battle.executeWoodShieldGroupAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             return;
         }
 
         if (card.id === 'bronze_shield') {
             player.defenseCard = null;
             if (targetPlayerId === 'CLOSEST_HIGHER') {
-                executeBronzeShieldClosestAttack(socket.id);
+                battle.executeBronzeShieldClosestAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             } else if (targetPlayerId === 'LOWER') {
-                executeBronzeShieldGroupAttack(socket.id);
+                battle.executeBronzeShieldGroupAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             }
             return;
         }
@@ -1335,7 +869,7 @@ io.on('connection', (socket) => {
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
             if (targetPlayerId === 'CLOSEST_HIGHER') {
-                executeBronzeShieldSetAttack(socket.id, defObj, maxAttacks, () => {
+                battle.executeBronzeShieldSetAttack(gameState, socket.id, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                     setTimeout(() => {
                         card.usesLeft = defObj.usesLeft;
                         if (defObj.usesLeft <= 0) player.defenseCard = null;
@@ -1344,7 +878,7 @@ io.on('connection', (socket) => {
                 });
                 return;
             } else if (targetPlayerId === 'LOWER') {
-                executeBronzeShieldSetGroupAttack(socket.id, defObj, maxAttacks, () => {
+                battle.executeBronzeShieldSetGroupAttack(gameState, socket.id, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                     setTimeout(() => {
                         card.usesLeft = defObj.usesLeft;
                         if (defObj.usesLeft <= 0) player.defenseCard = null;
@@ -1358,9 +892,9 @@ io.on('connection', (socket) => {
         if (card.id === 'grenade') {
             player.defenseCard = null;
             if (targetPlayerId === 'ALL_LOWER') {
-                executeGrenadeGroupAttack(socket.id);
+                battle.executeGrenadeGroupAttack(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             } else {
-                executeGrenadeSingleAttack(socket.id, targetPlayerId);
+                battle.executeGrenadeSingleAttack(gameState, socket.id, targetPlayerId, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket);
             }
             return;
         }
@@ -1369,12 +903,10 @@ io.on('connection', (socket) => {
             const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
-            executeShieldSetGroupAttack(socket.id, targetPlayerId, defObj, maxAttacks, () => {
+            battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                 setTimeout(() => {
                     card.usesLeft = defObj.usesLeft;
-                    if (defObj.usesLeft <= 0) {
-                        player.defenseCard = null;
-                    }
+                    if (defObj.usesLeft <= 0) player.defenseCard = null;
                     broadcastGameState();
                 }, 550);
             });
@@ -1386,12 +918,10 @@ io.on('connection', (socket) => {
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
             if (targetPlayerId === 'ALL_LOWER') {
-                executeWoodSwordSetGroupAttack(socket.id, defObj, maxAttacks, () => {
+                battle.executeWoodSwordSetGroupAttack(gameState, socket.id, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                     setTimeout(() => {
                         card.usesLeft = defObj.usesLeft;
-                        if (defObj.usesLeft <= 0) {
-                            player.defenseCard = null;
-                        }
+                        if (defObj.usesLeft <= 0) player.defenseCard = null;
                         broadcastGameState();
                     }, 550);
                 });
@@ -1408,12 +938,10 @@ io.on('connection', (socket) => {
                 }
                 if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
-                executeWoodSwordSetAttack(socket.id, targetPlayerId, defObj, maxAttacks, () => {
+                battle.executeWoodSwordSetAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, () => {
                     setTimeout(() => {
                         card.usesLeft = defObj.usesLeft;
-                        if (defObj.usesLeft <= 0) {
-                            player.defenseCard = null;
-                        }
+                        if (defObj.usesLeft <= 0) player.defenseCard = null;
                         broadcastGameState();
                     }, 550);
                 });
@@ -1424,7 +952,7 @@ io.on('connection', (socket) => {
         if (card.id === 'wood_sword') {
             if (targetPlayerId === 'ALL_LOWER') {
                 player.defenseCard = null;
-                executeWoodSwordAttack(socket.id, targetPlayerId);
+                battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 return;
             } else {
                 if (!targetPlayerId || !gameState.players[targetPlayerId] || targetPlayerId === socket.id) {
@@ -1439,7 +967,7 @@ io.on('connection', (socket) => {
                 if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
                 player.defenseCard = null;
-                executeWoodSwordAttack(socket.id, targetPlayerId);
+                battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 return;
             }
         }
@@ -1461,21 +989,17 @@ io.on('connection', (socket) => {
             const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
             const actualAttacks = Math.min(requestedCount, defObj.usesLeft);
 
-            executeShieldSetAttack(socket.id, targetPlayerId, defObj, actualAttacks, () => {
+            battle.executeShieldSetAttack(gameState, socket.id, targetPlayerId, defObj, actualAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, () => {
                 setTimeout(() => {
                     card.usesLeft = defObj.usesLeft;
-                    if (defObj.usesLeft <= 0) {
-                        player.defenseCard = null;
-                    }
+                    if (defObj.usesLeft <= 0) player.defenseCard = null;
                     broadcastGameState();
                 }, 550);
             });
         } else {
             defObj.usesLeft -= 1;
-            if (defObj.usesLeft <= 0) {
-                player.defenseCard = null;
-            }
-            executeStandardAttack(socket.id, targetPlayerId, card.id);
+            if (defObj.usesLeft <= 0) player.defenseCard = null;
+            battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, broadcastGameState, skipIfImmuneToRound1CardEffect);
         }
     });
 
@@ -1490,7 +1014,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('endTurn', () => {
-        resetScoreChanges();
+        battle.resetScoreChanges(gameState);
         const currentTurnId = gameState.currentTurnPlayerId;
         if (socket.id !== currentTurnId) return;
 
@@ -1533,1686 +1057,6 @@ io.on('connection', (socket) => {
         }
     });
 });
-
-function getWoodShieldHitRate(attackerScore, targetScore) {
-    const diff = attackerScore - targetScore;
-    const rate = Math.max(0, 1 - Math.abs(diff) / 10000);
-    return rate;
-}
-
-function getBronzeShieldLowerHitRate(attackerScore, targetScore) {
-    const diff = attackerScore - targetScore;
-    const rate = Math.max(0, 1 - Math.abs(diff) / 5000);
-    return rate;
-}
-
-function executeBronzeShieldSetAttack(attackerId, cardObj, maxAttacks, onComplete) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) {
-        onComplete();
-        return;
-    }
-
-    let attackIndex = 0;
-
-    function doNextAttack() {
-        if (attackIndex >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        const currentAttacker = gameState.players[attackerId];
-        const myScore = currentAttacker.score;
-        const allPlayers = Object.values(gameState.players);
-
-        const candidates = allPlayers.filter(p => {
-            if (p.id === attackerId) return false;
-            if (p.immunityCount && p.immunityCount > 0) return false;
-            if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-            const diff = p.score - myScore;
-            return diff >= 0 && diff <= 10000;
-        });
-
-        if (candidates.length === 0) {
-            if (attackIndex === 0) {
-                broadcastGameState(`${currentAttacker.name} が「青銅の盾セット」で攻撃を行いましたが、対象となるプレイヤーがいませんでした。`);
-            } else {
-                broadcastGameState(`${currentAttacker.name} の「青銅の盾セット」攻撃: 対象となるプレイヤーがいなくなったため終了しました。`);
-            }
-            onComplete();
-            return;
-        }
-
-        const minDiff = Math.min(...candidates.map(p => p.score - myScore));
-        const closestCandidates = candidates.filter(p => (p.score - myScore) === minDiff);
-        const target = closestCandidates[Math.floor(Math.random() * closestCandidates.length)];
-
-        if (skipIfImmuneToRound1CardEffect(target, currentAttacker, '「青銅の盾セット」攻撃')) {
-            onComplete();
-            return;
-        }
-
-        attackIndex++;
-        cardObj.usesLeft -= 1;
-
-        let logPrefix = `${currentAttacker.name} が ${target.name} に「青銅の盾セット」で攻撃 (${attackIndex}/${maxAttacks}回目, 必中)！ `;
-
-        if (target.defenseCard) {
-            if (isDefenseBlocked(target, currentAttacker)) {
-                broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-            } else {
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(target.id);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                broadcastGameState(msg);
-
-                if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
-                    setTimeout(doNextAttack, 500);
-                } else {
-                    onComplete();
-                }
-                return;
-            }
-        }
-
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
-        }
-
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
-        }
-
-        applyScoreChange(target, -3000);
-        target.immunityCount = 2;
-        broadcastGameState(logPrefix + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-
-        if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
-            setTimeout(doNextAttack, 500);
-        } else {
-            onComplete();
-        }
-    }
-
-    doNextAttack();
-}
-
-function executeBronzeShieldSetGroupAttack(attackerId, cardObj, maxAttacks, onComplete) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) {
-        onComplete();
-        return;
-    }
-
-    const myScore = attacker.score;
-
-    function getCandidates() {
-        return Object.values(gameState.players).filter(p => {
-            if (p.id === attackerId) return false;
-            if (p.immunityCount && p.immunityCount > 0) return false;
-            if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-            return p.score < myScore;
-        });
-    }
-
-    let attackCountUsed = 0;
-
-    function startSingleGroupAttack() {
-        const candidates = getCandidates();
-
-        if (candidates.length === 0 || attackCountUsed >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        const grouped = {};
-        candidates.forEach(p => {
-            const diff = Math.abs(myScore - p.score);
-            if (!grouped[diff]) grouped[diff] = [];
-            grouped[diff].push(p);
-        });
-
-        const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-        const attackQueue = [];
-
-        sortedDiffs.forEach(diff => {
-            const group = grouped[diff];
-            for (let i = group.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [group[i], group[j]] = [group[j], group[i]];
-            }
-            attackQueue.push(...group);
-        });
-
-        function processQueue(index) {
-            if (index >= attackQueue.length) {
-                attackCountUsed++;
-                cardObj.usesLeft -= 1;
-
-                broadcastGameState(`${attacker.name} の「青銅の盾セット」グループ攻撃は全員に外れました。（消費回数: ${attackCountUsed}/${maxAttacks}）`);
-
-                setTimeout(() => {
-                    startSingleGroupAttack();
-                }, 500);
-                return;
-            }
-
-            const target = gameState.players[attackQueue[index].id];
-            if (!target) {
-                processQueue(index + 1);
-                return;
-            }
-
-            if (skipIfImmuneToRound1CardEffect(target, attacker, '「青銅の盾セット」攻撃')) {
-                processQueue(index + 1);
-                return;
-            }
-
-            let hitRate = getBronzeShieldLowerHitRate(attacker.score, target.score);
-            if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-                hitRate = hitRate * 0.5;
-            }
-
-            if (hitRate <= 0) {
-                processQueue(index + 1);
-                return;
-            }
-
-            const ratePercent = Math.round(hitRate * 100);
-            let logPrefix = `${attacker.name} の「青銅の盾セット」攻撃 (${attackCountUsed + 1}/${maxAttacks}回目, 対象: ${target.name})！ `;
-
-            const isHit = Math.random() < hitRate;
-
-            if (!isHit) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-                setTimeout(() => processQueue(index + 1), 500);
-                return;
-            }
-
-            attackCountUsed++;
-            cardObj.usesLeft -= 1;
-
-            if (target.defenseCard) {
-                if (isDefenseBlocked(target, attacker)) {
-                    broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-                } else {
-                    target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true;
-                    let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                    if (target.defenseCard.card.id === 'grenade') {
-                        executeGrenadeDefenseCounter(target.id);
-                    }
-                    if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                        target.defenseCard = null;
-                        msg += '（相手の防御カード破棄）';
-                    }
-                    broadcastGameState(msg);
-                    setTimeout(() => startSingleGroupAttack(), 500);
-                    return;
-                }
-            }
-
-            if (target.steroidTurns && target.steroidTurns > 0) {
-                target.steroidRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            applyScoreChange(target, -3000);
-            target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-
-            setTimeout(() => startSingleGroupAttack(), 500);
-        }
-
-        processQueue(0);
-    }
-
-    startSingleGroupAttack();
-}
-
-function executeWoodShieldGroupAttack(attackerId, groupType) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) return;
-
-    const myScore = attacker.score;
-
-    let candidates = Object.values(gameState.players).filter(p => {
-        if (p.id === attackerId) return false;
-        if (p.immunityCount && p.immunityCount > 0) return false;
-        if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-
-        if (groupType === 'EQUAL_OR_HIGHER') {
-            return p.score >= myScore;
-        } else if (groupType === 'LOWER') {
-            return p.score < myScore;
-        }
-        return false;
-    });
-
-    if (candidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「木の盾」で攻撃を開始しましたが、対象となるプレイヤーがいませんでした。`);
-        return;
-    }
-
-    const grouped = {};
-    candidates.forEach(p => {
-        const diff = Math.abs(myScore - p.score);
-        if (!grouped[diff]) grouped[diff] = [];
-        grouped[diff].push(p);
-    });
-
-    const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-    const attackQueue = [];
-
-    sortedDiffs.forEach(diff => {
-        const group = grouped[diff];
-        for (let i = group.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [group[i], group[j]] = [group[j], group[i]];
-        }
-        attackQueue.push(...group);
-    });
-
-    function processQueue(index) {
-        if (index >= attackQueue.length) {
-            broadcastGameState(`${attacker.name} の「木の盾」攻撃は誰にも命中・無効化されず終了しました。`);
-            return;
-        }
-
-        const target = gameState.players[attackQueue[index].id];
-        if (!target) {
-            processQueue(index + 1);
-            return;
-        }
-
-        if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の盾」攻撃')) {
-            processQueue(index + 1);
-            return;
-        }
-
-        let hitRate = getWoodShieldHitRate(attacker.score, target.score);
-        if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-            hitRate = hitRate * 0.5;
-        }
-
-        if (hitRate <= 0) {
-            processQueue(index + 1);
-            return;
-        }
-
-        const ratePercent = Math.round(hitRate * 100);
-        let logPrefix = `${attacker.name} の「木の盾」攻撃 (対象: ${target.name})！ `;
-
-        const isHit = Math.random() < hitRate;
-
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-            setTimeout(() => processQueue(index + 1), 500);
-            return;
-        }
-
-        if (target.defenseCard) {
-            if (isDefenseBlocked(target, attacker)) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-            } else {
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！（攻撃中断）`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(target.id);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                broadcastGameState(msg);
-                return;
-            }
-        }
-
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-            return;
-        }
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-            return;
-        }
-
-        applyScoreChange(target, -3000);
-        target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
-    }
-
-    processQueue(0);
-}
-
-function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks, onComplete) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) {
-        onComplete();
-        return;
-    }
-
-    const myScore = attacker.score;
-
-    function getCandidates() {
-        return Object.values(gameState.players).filter(p => {
-            if (p.id === attackerId) return false;
-            if (p.immunityCount && p.immunityCount > 0) return false;
-            if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-
-            if (groupType === 'EQUAL_OR_HIGHER') {
-                return p.score >= myScore;
-            } else if (groupType === 'LOWER') {
-                return p.score < myScore;
-            }
-            return false;
-        });
-    }
-
-    let attackCountUsed = 0;
-
-    function startSingleGroupAttack() {
-        const candidates = getCandidates();
-
-        if (candidates.length === 0 || attackCountUsed >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        const grouped = {};
-        candidates.forEach(p => {
-            const diff = Math.abs(myScore - p.score);
-            if (!grouped[diff]) grouped[diff] = [];
-            grouped[diff].push(p);
-        });
-
-        const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-        const attackQueue = [];
-
-        sortedDiffs.forEach(diff => {
-            const group = grouped[diff];
-            for (let i = group.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [group[i], group[j]] = [group[j], group[i]];
-            }
-            attackQueue.push(...group);
-        });
-
-        function processQueue(index) {
-            if (index >= attackQueue.length) {
-                attackCountUsed++;
-                cardObj.usesLeft -= 1;
-
-                broadcastGameState(`${attacker.name} の「木の盾セット」グループ攻撃は全員に外れました。（消費回数: ${attackCountUsed}/${maxAttacks}）`);
-
-                setTimeout(() => {
-                    startSingleGroupAttack();
-                }, 500);
-                return;
-            }
-
-            const target = gameState.players[attackQueue[index].id];
-            if (!target) {
-                processQueue(index + 1);
-                return;
-            }
-
-            if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の盾セット」攻撃')) {
-                processQueue(index + 1);
-                return;
-            }
-
-            let hitRate = getWoodShieldHitRate(attacker.score, target.score);
-            if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-                hitRate = hitRate * 0.5;
-            }
-            if (hitRate <= 0) {
-                processQueue(index + 1);
-                return;
-            }
-
-            const ratePercent = Math.round(hitRate * 100);
-            let logPrefix = `${attacker.name} の「木の盾セット」攻撃 (${attackCountUsed + 1}/${maxAttacks}回目, 対象: ${target.name})！ `;
-
-            const isHit = Math.random() < hitRate;
-
-            if (!isHit) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-                setTimeout(() => processQueue(index + 1), 500);
-                return;
-            }
-
-            attackCountUsed++;
-            cardObj.usesLeft -= 1;
-
-            if (target.defenseCard) {
-                if (isDefenseBlocked(target, attacker)) {
-                    broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-                } else {
-                    target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true;
-                    let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                    if (target.defenseCard.card.id === 'grenade') {
-                        executeGrenadeDefenseCounter(target.id);
-                    }
-                    if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                        target.defenseCard = null;
-                        msg += '（相手の防御カード破棄）';
-                    }
-                    broadcastGameState(msg);
-                    setTimeout(() => startSingleGroupAttack(), 500);
-                    return;
-                }
-            }
-
-            if (target.steroidTurns && target.steroidTurns > 0) {
-                target.steroidRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            applyScoreChange(target, -3000);
-            target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-
-            setTimeout(() => startSingleGroupAttack(), 500);
-        }
-
-        processQueue(0);
-    }
-
-    startSingleGroupAttack();
-}
-
-function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onComplete) {
-    const attacker = gameState.players[attackerId];
-    const target = gameState.players[targetId];
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の盾セット」攻撃')) {
-        onComplete();
-        return;
-    }
-
-    const hitRate = getWoodShieldHitRate(attacker.score, target.score);
-    const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-
-    if (hitRate <= 0) {
-        onComplete();
-        return;
-    }
-
-    const ratePercent = Math.round(hitRate * 100);
-
-    let attackIndex = 0;
-
-    function doNextAttack() {
-        if (attackIndex >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        attackIndex++;
-        let logPrefix = `${attacker.name} が ${target.name} に「木の盾セット」で攻撃 (${attackIndex}/${maxAttacks}回目)！ `;
-
-        const isHit = Math.random() < hitRate;
-
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        cardObj.usesLeft -= 1;
-
-        if (target.defenseCard) {
-            if (isDefenseBlocked(target, attacker)) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-            } else {
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(target.id);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                broadcastGameState(msg);
-                setTimeout(doNextAttack, 500);
-                return;
-            }
-        }
-
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        if (isSteroid) {
-            target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        applyScoreChange(target, -3000);
-        target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}が選択不可状態になったため攻撃中断)`);
-
-        onComplete();
-    }
-
-    doNextAttack();
-}
-
-function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, onComplete) {
-    const attacker = gameState.players[attackerId];
-    const target = gameState.players[targetId];
-
-    if (!attacker || !target) {
-        onComplete();
-        return;
-    }
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の剣セット」攻撃')) {
-        onComplete();
-        return;
-    }
-
-    const scoreDiff = target.score - attacker.score;
-    if (scoreDiff < 0 || scoreDiff > 5000) {
-        const socket = io.sockets.sockets.get(attackerId);
-        if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
-        }
-        onComplete();
-        return;
-    }
-
-    let attackIndex = 0;
-
-    function doNextAttack() {
-        if (attackIndex >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        attackIndex++;
-        cardObj.usesLeft -= 1;
-
-        let baseHitRate = 0.5;
-        if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-            baseHitRate = 0.25;
-        }
-
-        let logPrefix = `${attacker.name} が ${target.name} に「木の剣セット」で攻撃 (${attackIndex}/${maxAttacks}回目)！ `;
-        const isHit = Math.random() < baseHitRate;
-
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-            if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
-                setTimeout(doNextAttack, 500);
-            } else {
-                onComplete();
-            }
-            return;
-        }
-
-        if (target.defenseCard) {
-            if (isDefenseBlocked(target, attacker)) {
-                broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-            } else {
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(target.id);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                broadcastGameState(msg);
-
-                if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
-                    setTimeout(doNextAttack, 500);
-                } else {
-                    onComplete();
-                }
-                return;
-            }
-        }
-
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
-        }
-
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
-        }
-
-        applyScoreChange(target, -3000);
-        target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
-        onComplete();
-    }
-
-    doNextAttack();
-}
-
-function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onComplete) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) {
-        onComplete();
-        return;
-    }
-
-    const myScore = attacker.score;
-
-    function getCandidates() {
-        return Object.values(gameState.players).filter(p => {
-            if (p.id === attackerId) return false;
-            if (p.immunityCount && p.immunityCount > 0) return false;
-            if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-            return p.score < myScore;
-        });
-    }
-
-    let attackCountUsed = 0;
-
-    function startSingleGroupAttack() {
-        const candidates = getCandidates();
-
-        if (candidates.length === 0 || attackCountUsed >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        const grouped = {};
-        candidates.forEach(p => {
-            const diff = Math.abs(myScore - p.score);
-            if (!grouped[diff]) grouped[diff] = [];
-            grouped[diff].push(p);
-        });
-
-        const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-        const attackQueue = [];
-
-        sortedDiffs.forEach(diff => {
-            const group = grouped[diff];
-            for (let i = group.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [group[i], group[j]] = [group[j], group[i]];
-            }
-            attackQueue.push(...group);
-        });
-
-        function processQueue(index) {
-            if (index >= attackQueue.length) {
-                attackCountUsed++;
-                cardObj.usesLeft -= 1;
-
-                broadcastGameState(`${attacker.name} の「木の剣セット」グループ攻撃は全員に外れました。（消費回数: ${attackCountUsed}/${maxAttacks}）`);
-
-                setTimeout(() => {
-                    startSingleGroupAttack();
-                }, 500);
-                return;
-            }
-
-            const target = gameState.players[attackQueue[index].id];
-            if (!target) {
-                processQueue(index + 1);
-                return;
-            }
-
-            if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の剣セット」攻撃')) {
-                processQueue(index + 1);
-                return;
-            }
-
-            let baseHitRate = 0.5;
-            if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-                baseHitRate = 0.25;
-            }
-
-            const ratePercent = Math.round(baseHitRate * 100);
-            let logPrefix = `${attacker.name} の「木の剣セット」攻撃 (${attackCountUsed + 1}/${maxAttacks}回目, 対象: ${target.name})！ `;
-
-            const isHit = Math.random() < baseHitRate;
-
-            if (!isHit) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-                setTimeout(() => processQueue(index + 1), 500);
-                return;
-            }
-
-            attackCountUsed++;
-            cardObj.usesLeft -= 1;
-
-            if (target.defenseCard) {
-                if (isDefenseBlocked(target, attacker)) {
-                    broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-                } else {
-                    target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true;
-                    let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                    if (target.defenseCard.card.id === 'grenade') {
-                        executeGrenadeDefenseCounter(target.id);
-                    }
-                    if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                        target.defenseCard = null;
-                        msg += '（相手の防御カード破棄）';
-                    }
-                    broadcastGameState(msg);
-                    setTimeout(() => startSingleGroupAttack(), 500);
-                    return;
-                }
-            }
-
-            if (target.steroidTurns && target.steroidTurns > 0) {
-                target.steroidRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
-            }
-
-            applyScoreChange(target, -3000);
-            target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-
-            setTimeout(() => startSingleGroupAttack(), 500);
-        }
-
-        processQueue(0);
-    }
-
-    startSingleGroupAttack();
-}
-
-function executeWoodSwordAttack(attackerId, targetTypeOrId) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) return;
-
-    if (targetTypeOrId === 'ALL_LOWER') {
-        const attackedPlayerIds = new Set();
-
-        function processNextLowerTarget() {
-            const currentPlayers = Object.values(gameState.players);
-            const currentAttackerScore = gameState.players[attackerId].score;
-
-            const lowerPlayers = currentPlayers.filter(p =>
-                p.score < currentAttackerScore &&
-                !attackedPlayerIds.has(p.id) &&
-                (!p.immunityCount || p.immunityCount <= 0) &&
-                !cannotSelectAsAttackTargetInRound1(attackerId, p.id)
-            );
-            if (lowerPlayers.length === 0) {
-                if (attackedPlayerIds.size === 0) {
-                    broadcastGameState(`${attacker.name} が「木の剣」を使用しましたが、対象となる下位プレイヤーがいませんでした。`);
-                }
-                return;
-            }
-
-            lowerPlayers.sort((a, b) => b.score - a.score);
-
-            const topScore = lowerPlayers[0].score;
-            const topGroup = lowerPlayers.filter(p => p.score === topScore);
-
-            const target = topGroup[Math.floor(Math.random() * topGroup.length)];
-            attackedPlayerIds.add(target.id);
-
-            if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の剣」攻撃')) {
-                setTimeout(processNextLowerTarget, 500);
-                return;
-            }
-
-            const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-            let logPrefix = `${attacker.name} の「木の剣」攻撃 (対象: ${target.name})！ `;
-
-            let baseHitRate = 0.5;
-            if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-                baseHitRate = 0.25;
-            }
-            const isHit = Math.random() < baseHitRate;
-
-            if (!isHit) {
-                broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-                setTimeout(processNextLowerTarget, 500);
-                return;
-            }
-
-            if (target.defenseCard) {
-                if (isDefenseBlocked(target, attacker)) {
-                    broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-                } else {
-                    target.defenseCard.usesLeft -= 1;
-                    target.defenseCard.revealed = true;
-                    let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                    if (target.defenseCard.card.id === 'grenade') {
-                        executeGrenadeDefenseCounter(target.id);
-                    }
-                    if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                        target.defenseCard = null;
-                        msg += '（相手の防御カード破棄）';
-                    }
-                    broadcastGameState(msg);
-                    return;
-                }
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                broadcastGameState(logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-                return;
-            }
-
-            if (isSteroid) {
-                target.steroidRevealed = true;
-                broadcastGameState(logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-                return;
-            }
-
-            applyScoreChange(target, -3000);
-            target.immunityCount = 2;
-            broadcastGameState(logPrefix + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。)`);
-        }
-
-        processNextLowerTarget();
-        return;
-    }
-
-    const target = gameState.players[targetTypeOrId];
-    if (!target) return;
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の剣」攻撃')) return;
-
-    const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-    const scoreDiff = target.score - attacker.score;
-
-    if (scoreDiff < 0 || scoreDiff > 5000) {
-        const socket = io.sockets.sockets.get(attackerId);
-        if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
-        }
-        return;
-    }
-
-    let baseHitRate = 0.5;
-    if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-        baseHitRate = 0.25;
-    }
-    let logPrefix = `${attacker.name} が ${target.name} に「木の剣」で攻撃！ `;
-    const isHit = Math.random() < baseHitRate;
-
-    if (!isHit) {
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-        return;
-    }
-
-    if (target.defenseCard) {
-        if (isDefenseBlocked(target, attacker)) {
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-        } else {
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            let msg = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(target.id);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            broadcastGameState(msg);
-            return;
-        }
-    }
-
-    if (target.invincibleTurns && target.invincibleTurns > 0) {
-        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    if (isSteroid) {
-        target.steroidRevealed = true;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    applyScoreChange(target, -3000);
-    target.immunityCount = 2;
-    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-}
-
-function executeStandardAttack(attackerId, targetId, cardId) {
-    const attacker = gameState.players[attackerId];
-    const target = gameState.players[targetId];
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '攻撃')) return;
-
-    const cardName = cardId === 'wood_sword' ? '木の剣' : '木の盾';
-    const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-    let logPrefix = `${attacker.name} が ${target.name} に「${cardName}」で攻撃！ `;
-
-    let hitRate = 0.5;
-    if (cardId === 'wood_shield') {
-        hitRate = getWoodShieldHitRate(attacker.score, target.score);
-    }
-    if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-        hitRate = hitRate * 0.5;
-    }
-
-    if (hitRate <= 0) {
-        return;
-    }
-
-    let isHit = Math.random() < hitRate;
-    let ratePercent = Math.round(hitRate * 100);
-    let rateText = `(命中率:${ratePercent}%) `;
-
-    if (!isHit) {
-        broadcastGameState(logPrefix + rateText + `攻撃は外れた！（ミス）`);
-        return;
-    }
-
-    if (target.defenseCard) {
-        if (isDefenseBlocked(target, attacker)) {
-            broadcastGameState(logPrefix + rateText + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-        } else {
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            let msg = logPrefix + rateText + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(target.id);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            broadcastGameState(msg);
-            return;
-        }
-    }
-
-    if (target.invincibleTurns && target.invincibleTurns > 0) {
-        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-        broadcastGameState(logPrefix + rateText + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    if (isSteroid) {
-        target.steroidRevealed = true;
-        broadcastGameState(logPrefix + rateText + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    applyScoreChange(target, -3000);
-    target.immunityCount = 2;
-    broadcastGameState(logPrefix + rateText + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-}
-
-function executeShotgunAttack(attackerId, targetTypeOrId) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) return;
-
-    if (targetTypeOrId === 'ALL_LOWER') {
-        const attackedPlayerIds = new Set();
-
-        function processNextLowerTarget() {
-            const currentPlayers = Object.values(gameState.players);
-            const currentAttackerScore = gameState.players[attackerId].score;
-
-            const lowerPlayers = currentPlayers.filter(p =>
-                p.score < currentAttackerScore &&
-                !attackedPlayerIds.has(p.id) &&
-                (!p.immunityCount || p.immunityCount <= 0) &&
-                !cannotSelectAsAttackTargetInRound1(attackerId, p.id)
-            );
-
-            if (lowerPlayers.length === 0) {
-                if (attackedPlayerIds.size === 0) {
-                    broadcastGameState(`${attacker.name} が「ショットガン」を使用しましたが、対象となる下位プレイヤーがいませんでした。`);
-                }
-                return;
-            }
-
-            lowerPlayers.sort((a, b) => b.score - a.score);
-
-            const topScore = lowerPlayers[0].score;
-            const topGroup = lowerPlayers.filter(p => p.score === topScore);
-
-            const target = topGroup[Math.floor(Math.random() * topGroup.length)];
-            attackedPlayerIds.add(target.id);
-
-            if (skipIfImmuneToRound1CardEffect(target, attacker, '「ショットガン」攻撃')) {
-                setTimeout(processNextLowerTarget, 500);
-                return;
-            }
-
-            let baseHitRate = 0.5;
-            if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-                baseHitRate = 0.25;
-            }
-            const isHit = Math.random() < baseHitRate;
-            let logPrefix = `${attacker.name} の「ショットガン」攻撃 (対象: ${target.name})！ `;
-
-            if (!isHit) {
-                broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-                setTimeout(processNextLowerTarget, 500);
-                return;
-            }
-
-            let penetrateMsg = '';
-            if (target.defenseCard) {
-                penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
-            }
-
-            if (target.invincibleTurns && target.invincibleTurns > 0) {
-                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                broadcastGameState(logPrefix + `命中！${penetrateMsg} しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃終了）`);
-                return;
-            }
-
-            if (target.steroidTurns && target.steroidTurns > 0) {
-                target.steroidRevealed = true;
-                broadcastGameState(logPrefix + `命中！${penetrateMsg} しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃終了）`);
-                return;
-            }
-
-            applyScoreChange(target, -3000);
-            target.immunityCount = 2;
-            broadcastGameState(logPrefix + `命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃終了)`);
-        }
-
-        processNextLowerTarget();
-        return;
-    }
-
-    const target = gameState.players[targetTypeOrId];
-    if (!target) return;
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「ショットガン」攻撃')) return;
-
-    const scoreDiff = target.score - attacker.score;
-    if (scoreDiff < 0 || scoreDiff > 5000) {
-        const socket = io.sockets.sockets.get(attackerId);
-        if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
-        }
-        return;
-    }
-
-    let baseHitRate = 0.5;
-    if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-        baseHitRate = 0.25;
-    }
-    let logPrefix = `${attacker.name} が ${target.name} に「ショットガン」で攻撃！ `;
-    const isHit = Math.random() < baseHitRate;
-
-    if (!isHit) {
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-        return;
-    }
-
-    let penetrateMsg = '';
-    if (target.defenseCard) {
-        penetrateMsg = ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)`;
-    }
-
-    if (target.invincibleTurns && target.invincibleTurns > 0) {
-        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    if (target.steroidTurns && target.steroidTurns > 0) {
-        target.steroidRevealed = true;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    applyScoreChange(target, -3000);
-    target.immunityCount = 2;
-    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-}
-
-function executeBronzeShieldClosestAttack(attackerId) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) return;
-
-    const myScore = attacker.score;
-    const allPlayers = Object.values(gameState.players);
-
-    const candidates = allPlayers.filter(p => {
-        if (p.id === attackerId) return false;
-        if (p.immunityCount && p.immunityCount > 0) return false;
-        if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-        const diff = p.score - myScore;
-        return diff >= 0 && diff <= 10000;
-    });
-
-    if (candidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「青銅の盾」で攻撃を行いましたが、対象となるプレイヤーがいませんでした。`);
-        return;
-    }
-
-    const minDiff = Math.min(...candidates.map(p => p.score - myScore));
-    const closestCandidates = candidates.filter(p => (p.score - myScore) === minDiff);
-    const target = closestCandidates[Math.floor(Math.random() * closestCandidates.length)];
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「青銅の盾」攻撃')) return;
-
-    let logPrefix = `${attacker.name} が ${target.name} に「青銅の盾」で攻撃！ (必中) `;
-
-    if (target.defenseCard) {
-        if (isDefenseBlocked(target, attacker)) {
-            broadcastGameState(logPrefix + `命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-        } else {
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(target.id);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            broadcastGameState(msg);
-            return;
-        }
-    }
-
-    if (target.steroidTurns && target.steroidTurns > 0) {
-        target.steroidRevealed = true;
-        broadcastGameState(logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-        return;
-    }
-    if (target.invincibleTurns && target.invincibleTurns > 0) {
-        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-        broadcastGameState(logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-        return;
-    }
-
-    applyScoreChange(target, -3000);
-    target.immunityCount = 2;
-    broadcastGameState(logPrefix + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-}
-
-function executeBronzeShieldGroupAttack(attackerId) {
-    const attacker = gameState.players[attackerId];
-    if (!attacker) return;
-
-    const myScore = attacker.score;
-
-    let candidates = Object.values(gameState.players).filter(p => {
-        if (p.id === attackerId) return false;
-        if (p.immunityCount && p.immunityCount > 0) return false;
-        if (cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-        return p.score < myScore;
-    });
-
-    if (candidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「青銅の盾」で攻撃を開始しましたが、対象となる下位プレイヤーがいませんでした。`);
-        return;
-    }
-
-    const grouped = {};
-    candidates.forEach(p => {
-        const diff = Math.abs(myScore - p.score);
-        if (!grouped[diff]) grouped[diff] = [];
-        grouped[diff].push(p);
-    });
-
-    const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-    const attackQueue = [];
-
-    sortedDiffs.forEach(diff => {
-        const group = grouped[diff];
-        for (let i = group.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [group[i], group[j]] = [group[j], group[i]];
-        }
-        attackQueue.push(...group);
-    });
-
-    function processQueue(index) {
-        if (index >= attackQueue.length) {
-            broadcastGameState(`${attacker.name} の「青銅の盾」攻撃は誰にも命中・無効化されず終了しました。`);
-            return;
-        }
-
-        const target = gameState.players[attackQueue[index].id];
-        if (!target) {
-            processQueue(index + 1);
-            return;
-        }
-
-        if (skipIfImmuneToRound1CardEffect(target, attacker, '「青銅の盾」攻撃')) {
-            processQueue(index + 1);
-            return;
-        }
-
-        let hitRate = getBronzeShieldLowerHitRate(attacker.score, target.score);
-        if (attacker.darknessTurns && attacker.darknessTurns > 0) {
-            hitRate = hitRate * 0.5;
-        }
-
-        if (hitRate <= 0) {
-            processQueue(index + 1);
-            return;
-        }
-
-        const ratePercent = Math.round(hitRate * 100);
-        let logPrefix = `${attacker.name} の「青銅の盾」攻撃 (対象: ${target.name})！ `;
-
-        const isHit = Math.random() < hitRate;
-
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-            setTimeout(() => processQueue(index + 1), 500);
-            return;
-        }
-
-        if (target.defenseCard) {
-            if (isDefenseBlocked(target, attacker)) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
-            } else {
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！（攻撃終了）`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(target.id);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                broadcastGameState(msg);
-                return;
-            }
-        }
-
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃終了）`);
-            return;
-        }
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃終了）`);
-            return;
-        }
-
-        applyScoreChange(target, -3000);
-        target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃終了)`);
-    }
-
-    processQueue(0);
-}
-
-function executeEarthquake(casterSocketId) {
-    const caster = gameState.players[casterSocketId];
-    if (!caster) return;
-
-    io.emit('showCutIn', {
-        title: '地震発動！',
-        imagePath: '/images/earthquake.png'
-    });
-
-    setTimeout(() => {
-        const myScore = caster.score;
-        const allPlayers = Object.values(gameState.players);
-
-        const targets = allPlayers.filter(p => p.id !== casterSocketId && p.score >= myScore);
-
-        if (targets.length === 0) {
-            broadcastGameState(`${caster.name} が「地震」を発動しましたが、同点以上の相手が存在しないため不発に終わりました。`);
-            return;
-        }
-
-        const affectedLogs = [];
-
-        targets.forEach(target => {
-            if (isImmuneToRound1CardEffect(target.id, casterSocketId)) {
-                affectedLogs.push(`${target.name}(1巡目効果無効)`);
-                return;
-            }
-
-            const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
-            const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-
-            if (isInvincible || isSteroid) {
-                if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                if (isSteroid) target.steroidRevealed = true;
-                const stateName = isInvincible ? '無敵' : 'ステロイド';
-                affectedLogs.push(`${target.name}(${stateName}ガード)`);
-                return;
-            }
-
-            const damage = Math.random() < 0.5 ? -1000 : -3000;
-            applyScoreChange(target, damage);
-
-            target.hand = [];
-            target.defenseCard = null;
-            target.immunityCount = 2;
-
-            affectedLogs.push(`${target.name}(${damage.toLocaleString()}点・手札防御全破棄・選択不可2T)`);
-        });
-
-        broadcastGameState(`${caster.name} が「地震」を発動！ (対象: ${affectedLogs.join(' / ')})`);
-    }, 2000);
-}
-
-function executeDiamondSword(casterSocketId) {
-    const caster = gameState.players[casterSocketId];
-    if (!caster) return;
-
-    const allPlayers = Object.values(gameState.players);
-    const maxScore = Math.max(...allPlayers.map(p => p.score));
-
-    const targetPlayers = allPlayers.filter(p => Math.abs(maxScore - p.score) <= 1000);
-
-    const affectedLogs = [];
-
-    targetPlayers.forEach(target => {
-        if (target.id !== casterSocketId && isImmuneToRound1CardEffect(target.id, casterSocketId)) {
-            affectedLogs.push(`${target.name}(1巡目効果無効)`);
-            return;
-        }
-
-        const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
-        const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
-        const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
-
-        if (obanIndex !== -1) {
-            target.hand.splice(obanIndex, 1);
-            applyScoreChange(target, 8000);
-            affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8,000点獲得)`);
-            return;
-        } else if (kobanSetIndex !== -1) {
-            const kobanSet = target.hand[kobanSetIndex];
-            if (!kobanSet.usesLeft) kobanSet.usesLeft = 3;
-            kobanSet.usesLeft -= 1;
-            applyScoreChange(target, 2000);
-
-            let subMsg = '';
-            if (kobanSet.usesLeft <= 0) {
-                target.hand.splice(kobanSetIndex, 1);
-                subMsg = '・カード破棄';
-            } else {
-                subMsg = `・残り${kobanSet.usesLeft}回`;
-            }
-            affectedLogs.push(`${target.name}(「お守り小判セット」が身代わり発動！効果無効化＆+2,000点獲得${subMsg})`);
-            return;
-        } else if (kobanIndex !== -1) {
-            target.hand.splice(kobanIndex, 1);
-            applyScoreChange(target, 3000);
-            affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3,000点獲得)`);
-            return;
-        }
-
-        const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
-        const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-        const isImmune = target.immunityCount && target.immunityCount > 0;
-
-        if (isInvincible || isSteroid || isImmune) {
-            if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            if (isSteroid) target.steroidRevealed = true;
-
-            let defMsg = '';
-            if (target.defenseCard) {
-                target.defenseCard = null;
-                defMsg = '防御カード破棄';
-            }
-            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
-            affectedLogs.push(`${target.name}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
-        } else {
-            target.hand = [];
-            target.defenseCard = null;
-            applyScoreChange(target, -5000);
-            target.immunityCount = 2;
-            affectedLogs.push(`${target.name}(-5,000点・手札防御全破棄・選択不可2T)`);
-        }
-    });
-
-    broadcastGameState(`${caster.name} が「ダイヤの剣」を発動！ (対象: ${affectedLogs.join(' / ')})`);
-}
-
-function executeDisasterAttack(casterSocketId) {
-    const caster = gameState.players[casterSocketId];
-    if (!caster) return;
-
-    io.emit('showCutIn', {
-        title: '大災害発動！',
-        imagePath: '/images/disaster.png'
-    });
-
-    setTimeout(() => {
-        const initialPlayers = Object.values(gameState.players).map(p => ({
-            id: p.id,
-            name: p.name,
-            score: p.score
-        }));
-
-        const rankMap = {};
-        initialPlayers.forEach(p => {
-            const higherCount = initialPlayers.filter(other => other.score > p.score).length;
-            rankMap[p.id] = higherCount + 1;
-        });
-
-        const damageByRank = {
-            1: -6000,
-            2: -4000,
-            3: -2000,
-            4: -1000
-        };
-
-        Object.values(gameState.players).forEach(player => {
-            if (player.id === casterSocketId) return;
-
-            if (isImmuneToRound1CardEffect(player.id, casterSocketId)) return;
-
-            const rank = rankMap[player.id];
-            const damage = damageByRank[rank] || 0;
-
-            const isInvincible = player.invincibleTurns && player.invincibleTurns > 0;
-            const isSteroid = player.steroidTurns && player.steroidTurns > 0;
-            const isImmune = player.immunityCount && player.immunityCount > 0;
-
-            if (isSteroid) {
-                player.steroidTurns = 0;
-                player.steroidRevealed = false;
-                return;
-            }
-
-            if (isInvincible && player.invincibleSource === 'ARMOR') {
-                player.armorRevealed = true;
-            }
-
-            if (!isInvincible && !isImmune) {
-                applyScoreChange(player, damage);
-                player.immunityCount = 2;
-            }
-
-            if (!isInvincible) {
-                player.hand = [];
-                player.defenseCard = null;
-            }
-        });
-
-        broadcastGameState(`${caster.name} が「大災害」を発動！`);
-
-    }, 2000);
-}
-
-function executeDarkMatter(casterSocketId) {
-    const player = gameState.players[casterSocketId];
-    if (!player) return;
-
-    player.invincibleTurns = 1;
-    player.invincibleSource = 'DARK_MATTER';
-
-    const prevMyScore = player.score;
-    applyScoreChange(player, 5000);
-    const newMyScore = player.score;
-
-    const penalizedNames = [];
-
-    Object.values(gameState.players).forEach(opponent => {
-        if (opponent.id === player.id) return;
-
-        if (isImmuneToRound1CardEffect(opponent.id, casterSocketId)) return;
-
-        const isInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
-        const isImmune = opponent.immunityCount && opponent.immunityCount > 0;
-        if (isInvincible || isImmune) return;
-
-        const isConditionA = (opponent.score === prevMyScore);
-        const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
-
-        if (isConditionA || isConditionB) {
-            const isSuccess = Math.random() < 0.5;
-
-            if (isSuccess) {
-                opponent.hand = [];
-                opponent.defenseCard = null;
-                applyScoreChange(opponent, -3000);
-                opponent.immunityCount = 2;
-
-                penalizedNames.push(`${opponent.name}(成功)`);
-            } else {
-                penalizedNames.push(`${opponent.name}(不発)`);
-            }
-        }
-    });
-
-    let logMsg = `${player.name} が「ダークマター」を使用！ 無敵状態になり、+5,000点獲得！`;
-    if (penalizedNames.length > 0) {
-        logMsg += ` 対象結果: ${penalizedNames.join(', ')}`;
-    }
-
-    broadcastGameState(logMsg);
-}
-
-function executeSmokeScreen(casterSocketId) {
-    const caster = gameState.players[casterSocketId];
-    if (!caster) return;
-
-    const playersArr = Object.values(gameState.players);
-    const rankMap = {};
-    playersArr.forEach(p => {
-        const higherCount = playersArr.filter(other => other.score > p.score).length;
-        rankMap[p.id] = higherCount + 1;
-    });
-
-    const myScore = caster.score;
-    const opponents = playersArr.filter(p => p.id !== casterSocketId);
-
-    const targets = opponents.filter(p => {
-        if (p.score < myScore) return false;
-        if (isImmuneToRound1CardEffect(p.id, casterSocketId)) return false;
-        return true;
-    });
-
-    if (targets.length > 0) {
-        const affectedNames = [];
-        let anySuccess = false;
-
-        targets.forEach(target => {
-            const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
-            const isSteroid = target.steroidTurns && target.steroidTurns > 0;
-
-            if (isInvincible || isSteroid) {
-                if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                if (isSteroid) target.steroidRevealed = true;
-                affectedNames.push(`${target.name}(無効)`);
-                return;
-            }
-
-            anySuccess = true;
-            applyScoreChange(target, -1000);
-
-            const rank = rankMap[target.id];
-            const turns = (rank === 1) ? 2 : 1;
-            target.darknessTurns = turns;
-
-            affectedNames.push(`${target.name}(${turns}T)`);
-        });
-
-        const statusSuffix = anySuccess ? " (-1,000点 & 暗闇付与)" : "";
-        broadcastGameState(`${caster.name} が「煙幕」を使用！ 対象: ${affectedNames.join(', ')}${statusSuffix}`);
-    } else {
-        const isInvincible = caster.invincibleTurns && caster.invincibleTurns > 0;
-        const isSteroid = caster.steroidTurns && caster.steroidTurns > 0;
-
-        if (isInvincible || isSteroid) {
-            broadcastGameState(`${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果が跳ね返りましたが、無敵またはステロイド状態のため無効化されました。`);
-            return;
-        }
-
-        applyScoreChange(caster, -1000);
-
-        const myRank = rankMap[caster.id];
-        const turns = (myRank === 1) ? 2 : 1;
-        caster.darknessTurns = turns;
-
-        broadcastGameState(`${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果発動 (-1,000点 & 暗闇${turns}ターン付与)`);
-    }
-}
 
 server.listen(3000, () => {
     console.log('サーバーがポート 3000 で起動しました');
