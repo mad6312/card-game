@@ -14,133 +14,133 @@ const CARD_DECK = [
         name: '木の盾',
         category: 'DEFENSE',
         image: '/images/wood_shield.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
     },
     {
         id: 'wood_shield_set',
         name: '木の盾セット',
         category: 'DEFENSE',
         image: '/images/wood_shield_set.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
     },
     {
         id: 'bronze_shield',
         name: '青銅の盾',
         category: 'DEFENSE',
         image: '/images/bronze_shield.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
     },
     {
         id: 'bronze_shield_set',
         name: '青銅の盾セット',
         category: 'DEFENSE',
         image: '/images/bronze_shield_set.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上で最も点差が近い相手1名 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】\n上：100%\n下：100-(得点差/50)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
     },
     {
         id: 'wood_sword',
         name: '木の剣',
         category: 'ATTACK',
         image: '/images/wood_sword.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。'
     },
     {
         id: 'wood_sword_set',
         name: '木の剣セット',
         category: 'ATTACK',
         image: '/images/wood_sword_set.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n\n【残り回数】3回'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n\n【残り回数】3回'
     },
     {
         id: 'shotgun',
         name: 'ショットガン',
         category: 'ATTACK',
         image: '/images/shotgun.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】50%'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3,000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】50%'
     },
     {
         id: 'grenade',
         name: 'グレネード',
         category: 'ATTACK',
         image: '/images/grenade.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分との得点差が-5000点以内の相手全員\n【追加対象】上記対象との得点差が1000点以内のプレイヤー（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、さらに5000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】\n上：50%\n下：80%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n【追加効果】無効化時、自分との得点差が-1000点以内の相手全員の手札・防御カードをすべて破棄し、さらに5000点ダメージを与える。'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5,000点以内の相手1人 または 自分との得点差が-5,000点以内の相手全員\n【追加対象】上記対象との得点差が1,000点以内のプレイヤー（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、さらに5,000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】\n上：50%\n下：80%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n【追加効果】無効化時、自分との得点差が-1,000点以内の相手全員の手札・防御カードをすべて破棄し、さらに5,000点ダメージを与える。'
     },
     {
         id: 'diamond_sword',
         name: 'ダイヤの剣',
         category: 'ATTACK',
         image: '/images/diamond_sword.png',
-        desc: '【対象】1位、および1位と得点差が±1000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、5000点ダメージを与える。'
+        desc: '【対象】1位、および1位と得点差が±1,000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、5,000点ダメージを与える。'
     },
     {
         id: 'earthquake',
         name: '地震',
         category: 'ATTACK',
         image: '/images/earthquake.png',
-        desc: '【使用時】自分と同点以上の相手全員に1000点/3000点(各50%)ダメージを与える。\n【追加効果】対象の手札・防御カードをすべて破棄する。'
+        desc: '【使用時】自分と同点以上の相手全員に1,000点/3,000点(各50%)ダメージを与える。\n【追加効果】対象の手札・防御カードをすべて破棄する。'
     },
     {
         id: 'time_bomb',
         name: '時限爆弾',
         category: 'SPECIAL',
         image: '/images/time_bomb.png',
-        desc: '【ドロー時】即時発動(+1000点)。8ターン後に爆発(-6000点/手札防御全破棄/選択不可2T)。自ターン開始毎+1000点。±3000点差の相手に50%で受け渡し可能。無敵・ステロイドで消滅。'
+        desc: '【ドロー時】即時発動(+1,000点)。8ターン後に爆発(-6,000点/手札防御全破棄/選択不可2T)。自ターン開始毎+1,000点。±3,000点差の相手に50%で受け渡し可能。無敵・ステロイドで消滅。'
     },
     {
         id: 'omamori_koban',
         name: 'お守り小判',
         category: 'SPECIAL',
         image: '/images/omamori_koban.png',
-        desc: '【使用時】自分の得点を+3000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費して「ダイヤの剣」の効果を無効化し、さらに自分の得点を+3000点する。'
+        desc: '【使用時】自分の得点を+3,000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費して「ダイヤの剣」の効果を無効化し、さらに自分の得点を+3,000点する。'
     },
     {
         id: 'omamori_koban_set',
         name: 'お守り小判セット',
         category: 'SPECIAL',
         image: '/images/omamori_koban_set.png',
-        desc: '【使用時】自分の得点を+2000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、自動で1回分消費し、「ダイヤの剣」を回避した上で自分の得点を+2000点する。\n【残り回数】3回'
+        desc: '【使用時】自分の得点を+2,000点する。\n【所有時】自分が「ダイヤの剣」の対象となった時、自動で1回分消費し、「ダイヤの剣」を回避した上で自分の得点を+2,000点する。\n【残り回数】3回'
     },
     {
         id: 'omamori_oban',
         name: 'お守り大判',
         category: 'SPECIAL',
         image: '/images/omamori_oban.png',
-        desc: '【使用時】自分の得点を+3000点〜+8000点の範囲で選択して加算する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費し、「ダイヤの剣」を回避した上で自分の得点を+8000点する。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
+        desc: '【使用時】自分の得点を+3,000点〜+8,000点の範囲で選択して加算する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費し、「ダイヤの剣」を回避した上で自分の得点を+8,000点する。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
     },
     {
         id: 'disaster',
         name: '大災害',
         category: 'ATTACK',
         image: '/images/disaster.png',
-        desc: '【使用時】相手全員に順位に応じたダメージを与える。\n1位:6000点/2位:4000点/3位:2000点/4位:1000点\n【追加効果】対象の手札・防御カードをすべて破棄する。'
+        desc: '【使用時】相手全員に順位に応じたダメージを与える。\n1位:6,000点/2位:4,000点/3位:2,000点/4位:1,000点\n【追加効果】対象の手札・防御カードをすべて破棄する。'
     },
     {
         id: 'invincible_armor',
         name: '無敵アーマー',
         category: 'SPECIAL',
         image: '/images/invincible_armor.png',
-        desc: '【使用時】4ターンの間、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる（対戦相手には非公開）。\n【追加効果】このカードによる「無敵状態」解除時、自分の得点を+1000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。'
+        desc: '【使用時】4ターンの間、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる（対戦相手には非公開）。\n【追加効果】このカードによる「無敵状態」解除時、自分の得点を+1,000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3,000点ダメージを与える。'
     },
     {
         id: 'dark_matter',
         name: 'ダークマター',
         category: 'SPECIAL',
         image: '/images/dark_matter.png',
-        desc: '【使用時】自分の得点を+5000点し、次の自分のターン開始時まで、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる。\n【追加効果】このカードの使用により得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
+        desc: '【使用時】自分の得点を+5,000点し、次の自分のターン開始時まで、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる。\n【追加効果】このカードの使用により得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3,000点ダメージを与える。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
     },
     {
         id: 'steroid',
         name: 'ステロイド',
         category: 'SPECIAL',
         image: '/images/steroid.png',
-        desc: '【使用時】4ターンの間、一部を除く攻撃カードの効果を受けなくなる「ステロイド状態」になる（対戦相手には非公開）。\n【追加効果】「ステロイド状態」解除時、自分の得点を+1000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。'
+        desc: '【使用時】4ターンの間、一部を除く攻撃カードの効果を受けなくなる「ステロイド状態」になる（対戦相手には非公開）。\n【追加効果】「ステロイド状態」解除時、自分の得点を+1,000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3,000点ダメージを与える。'
     },
     {
         id: 'smoke_screen',
         name: '煙幕',
         category: 'ATTACK',
         image: '/images/smoke_screen.png',
-        desc: '【使用時】自分以上の得点を持つ相手全員に1000点ダメージを与える。\n【追加効果】対象に攻撃カード使用時の命中率が半減される「暗闇状態」を付与する。「暗闇状態」は対象プレイヤーのターン終了時まで継続する。'
+        desc: '【使用時】自分以上の得点を持つ相手全員に1,000点ダメージを与える。\n【追加効果】対象に攻撃カード使用時の命中率が半減される「暗闇状態」を付与する。「暗闇状態」は対象プレイヤーのターン終了時まで継続する。'
     }
 ];
 
@@ -179,7 +179,7 @@ let cardSettings = {
     smoke_screen: true
 };
 
-let showOtherPlayersInfo = true; // デバッグ設定：他プレイヤー情報の公開/非公開
+let showOtherPlayersInfo = true;
 
 function createInitialState() {
     return {
@@ -447,7 +447,7 @@ function executeGrenadeDefenseCounter(defenderId) {
             target.defenseCard = null;
             applyScoreChange(target, -5000);
             target.immunityCount = 2;
-            counterLogs.push(`${target.name}(-5000点・手札防御全破棄・選択不可2T)`);
+            counterLogs.push(`${target.name}(-5,000点・手札防御全破棄・選択不可2T)`);
         }
     });
 
@@ -491,7 +491,7 @@ function executeGrenadeSplash(primaryTargetId, casterId) {
             victim.defenseCard = null;
             applyScoreChange(victim, -5000);
             victim.immunityCount = 2;
-            affectedLogs.push(`${victim.name}(-5000点・手札防御全破棄・選択不可2T)`);
+            affectedLogs.push(`${victim.name}(-5,000点・手札防御全破棄・選択不可2T)`);
         }
     });
 
@@ -543,7 +543,7 @@ function handleBuffExpire(player, buffType) {
         }
     });
 
-    let logMsg = `${player.name} の「${cardName}」が解除され、+1000点獲得！`;
+    let logMsg = `${player.name} の「${cardName}」が解除され、+1,000点獲得！`;
     if (penalizedNames.length > 0) {
         logMsg += ` ペナルティ結果: ${penalizedNames.join(', ')}`;
     }
@@ -600,7 +600,7 @@ function proceedToNextTurn() {
                     p.hand = [];
                     p.defenseCard = null;
                     p.immunityCount = 2;
-                    expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発！ -6000点、手札・防御全破棄、選択不可(2T)付与！`);
+                    expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発！ -6,000点、手札・防御全破棄、選択不可(2T)付与！`);
                 }
             }
         }
@@ -638,7 +638,7 @@ function proceedToNextTurn() {
                 nextPlayer.timeBombTurns = 0;
             } else if (!nextPlayer.bombDrawnThisTurn) {
                 applyScoreChange(nextPlayer, 1000);
-                expireLogs.push(`${nextPlayer.name} の「時限爆弾」保持ボーナス: +1000点獲得！`);
+                expireLogs.push(`${nextPlayer.name} の「時限爆弾」保持ボーナス: +1,000点獲得！`);
             }
         }
     }
@@ -758,7 +758,7 @@ io.on('connection', (socket) => {
             target.score += Number(amount);
         }
 
-        broadcastGameState(`[デバッグ] ${target.name} の得点が ${target.score} 点に変更されました。`);
+        broadcastGameState(`[デバッグ] ${target.name} の得点が ${target.score.toLocaleString()} 点に変更されました。`);
     });
 
     socket.on('debugDrawCard', ({ targetPlayerId }) => {
@@ -779,7 +779,7 @@ io.on('connection', (socket) => {
                 broadcastGameState(`[デバッグ] ${target.name} が「時限爆弾」をドローしましたが、無敵/ステロイド状態のため消滅しました！`);
             } else {
                 io.emit('showCutIn', { title: '時限爆弾出現！', imagePath: '/images/time_bomb.png' });
-                broadcastGameState(`[デバッグ] ${target.name} が「時限爆弾」をドロー！ +1000点獲得＆時限爆弾状態(8T)付与！`);
+                broadcastGameState(`[デバッグ] ${target.name} が「時限爆弾」をドロー！ +1,000点獲得＆時限爆弾状態(8T)付与！`);
             }
         } else {
             target.hand.push(randomCard);
@@ -832,18 +832,18 @@ io.on('connection', (socket) => {
             player.timeBombTurns = 8;
             player.bombDrawnThisTurn = true;
 
-            const bonusLog = acceptBonus ? ' (+3000点獲得)' : '';
+            const bonusLog = acceptBonus ? ' (+3,000点獲得)' : '';
 
             if (player.invincibleTurns > 0 || player.steroidTurns > 0) {
                 player.timeBombTurns = 0;
                 broadcastGameState(`${player.name} が「時限爆弾」をドローしましたが、無敵/ステロイド状態のため消滅しました！${bonusLog}`);
             } else {
                 io.emit('showCutIn', { title: '時限爆弾出現！', imagePath: '/images/time_bomb.png' });
-                broadcastGameState(`${player.name} が「時限爆弾」をドロー！ +1000点獲得＆時限爆弾状態(8T)付与！${bonusLog}`);
+                broadcastGameState(`${player.name} が「時限爆弾」をドロー！ +1,000点獲得＆時限爆弾状態(8T)付与！${bonusLog}`);
             }
         } else {
             player.hand.push(randomCard);
-            const bonusLog = acceptBonus ? ' (+3000点獲得)' : '';
+            const bonusLog = acceptBonus ? ' (+3,000点獲得)' : '';
             socket.emit('syncGameState', getSyncPayload(`「${randomCard.name}」を獲得しました。${bonusLog}`));
 
             const otherLog = showOtherPlayersInfo ? `${player.name} がカードを1枚獲得しました。${bonusLog}` : '';
@@ -928,7 +928,7 @@ io.on('connection', (socket) => {
             player.playedHandCardThisTurn = true;
             player.playedObanThisTurn = true;
             player.hand.splice(cardIndex, 1);
-            broadcastGameState(`${player.name} が「お守り大判」を使用し、+${addPoints}点獲得しました！`);
+            broadcastGameState(`${player.name} が「お守り大判」を使用し、+${addPoints.toLocaleString()}点獲得しました！`);
             return;
         }
 
@@ -946,7 +946,7 @@ io.on('connection', (socket) => {
         if (card.id === 'omamori_koban') {
             applyScoreChange(player, 3000);
             player.hand.splice(cardIndex, 1);
-            broadcastGameState(`${player.name} が「お守り小判」を使用し、+3000点獲得しました！`);
+            broadcastGameState(`${player.name} が「お守り小判」を使用し、+3,000点獲得しました！`);
         } else if (card.id === 'omamori_koban_set') {
             if (!card.usesLeft) card.usesLeft = 3;
             const count = Math.min(Math.max(Number(attackCount) || 1, 1), card.usesLeft);
@@ -954,7 +954,7 @@ io.on('connection', (socket) => {
             card.usesLeft -= count;
             applyScoreChange(player, addPoints);
 
-            let msg = `${player.name} が「お守り小判セット」を${count}回分使用し、+${addPoints}点獲得しました！`;
+            let msg = `${player.name} が「お守り小判セット」を${count}回分使用し、+${addPoints.toLocaleString()}点獲得しました！`;
             if (card.usesLeft <= 0) {
                 player.hand.splice(cardIndex, 1);
                 msg += '（カード破棄）';
@@ -1158,7 +1158,7 @@ io.on('connection', (socket) => {
             }
 
             player.defenseCard = { card, usesLeft: uses, revealed: false };
-            player.playedHandCardThisTurn = true; // 防御セットも手札使用として記録
+            player.playedHandCardThisTurn = true;
             player.hand.splice(cardIndex, 1);
 
             if (showOtherPlayersInfo) {
@@ -1499,7 +1499,7 @@ function executeBronzeShieldSetAttack(attackerId, cardObj, maxAttacks, onComplet
 
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
-        broadcastGameState(logPrefix + `命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+        broadcastGameState(logPrefix + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 
         if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
             setTimeout(doNextAttack, 500);
@@ -1642,7 +1642,7 @@ function executeBronzeShieldSetGroupAttack(attackerId, cardObj, maxAttacks, onCo
 
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 
             setTimeout(() => startSingleGroupAttack(), 500);
         }
@@ -1699,7 +1699,7 @@ function executeEarthquake(casterSocketId) {
             target.defenseCard = null;
             target.immunityCount = 2;
 
-            affectedLogs.push(`${target.name}(${damage}点・手札防御全破棄・選択不可2T)`);
+            affectedLogs.push(`${target.name}(${damage.toLocaleString()}点・手札防御全破棄・選択不可2T)`);
         });
 
         broadcastGameState(`${caster.name} が「地震」を発動！ (対象: ${affectedLogs.join(' / ')})`);
@@ -1776,7 +1776,7 @@ function executeShotgunAttack(attackerId, targetTypeOrId) {
 
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            broadcastGameState(logPrefix + `命中ヒット！${penetrateMsg} 得点-3000点！ (${target.name}は選択不可状態になりました。攻撃終了)`);
+            broadcastGameState(logPrefix + `命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃終了)`);
         }
 
         processNextLowerTarget();
@@ -1792,7 +1792,7 @@ function executeShotgunAttack(attackerId, targetTypeOrId) {
     if (scoreDiff < 0 || scoreDiff > 5000) {
         const socket = io.sockets.sockets.get(attackerId);
         if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5000点以下のプレイヤーのみ攻撃対象に指定できます。');
+            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
         }
         return;
     }
@@ -1828,7 +1828,7 @@ function executeShotgunAttack(attackerId, targetTypeOrId) {
 
     applyScoreChange(target, -3000);
     target.immunityCount = 2;
-    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${penetrateMsg} 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 }
 
 function executeBronzeShieldClosestAttack(attackerId) {
@@ -1891,7 +1891,7 @@ function executeBronzeShieldClosestAttack(attackerId) {
 
     applyScoreChange(target, -3000);
     target.immunityCount = 2;
-    broadcastGameState(logPrefix + `命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+    broadcastGameState(logPrefix + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 }
 
 function executeBronzeShieldGroupAttack(attackerId) {
@@ -2001,7 +2001,7 @@ function executeBronzeShieldGroupAttack(attackerId) {
 
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました。攻撃終了)`);
+        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃終了)`);
     }
 
     processQueue(0);
@@ -2120,7 +2120,7 @@ function executeWoodShieldGroupAttack(attackerId, groupType) {
 
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
+        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
     }
 
     processQueue(0);
@@ -2262,7 +2262,7 @@ function executeShieldSetGroupAttack(attackerId, groupType, cardObj, maxAttacks,
 
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 
             setTimeout(() => startSingleGroupAttack(), 500);
         }
@@ -2291,7 +2291,7 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
     if (scoreDiff < 0 || scoreDiff > 5000) {
         const socket = io.sockets.sockets.get(attackerId);
         if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5000点以下のプレイヤーのみ攻撃対象に指定できます。');
+            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
         }
         onComplete();
         return;
@@ -2367,7 +2367,7 @@ function executeWoodSwordSetAttack(attackerId, targetId, cardObj, maxAttacks, on
 
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
+        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
         onComplete();
     }
 
@@ -2500,7 +2500,7 @@ function executeWoodSwordSetGroupAttack(attackerId, cardObj, maxAttacks, onCompl
 
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 
             setTimeout(() => startSingleGroupAttack(), 500);
         }
@@ -2535,7 +2535,7 @@ function executeDiamondSword(casterSocketId) {
         if (obanIndex !== -1) {
             target.hand.splice(obanIndex, 1);
             applyScoreChange(target, 8000);
-            affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8000点獲得)`);
+            affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8,000点獲得)`);
             return;
         } else if (kobanSetIndex !== -1) {
             const kobanSet = target.hand[kobanSetIndex];
@@ -2550,12 +2550,12 @@ function executeDiamondSword(casterSocketId) {
             } else {
                 subMsg = `・残り${kobanSet.usesLeft}回`;
             }
-            affectedLogs.push(`${target.name}(「お守り小判セット」が身代わり発動！効果無効化＆+2000点獲得${subMsg})`);
+            affectedLogs.push(`${target.name}(「お守り小判セット」が身代わり発動！効果無効化＆+2,000点獲得${subMsg})`);
             return;
         } else if (kobanIndex !== -1) {
             target.hand.splice(kobanIndex, 1);
             applyScoreChange(target, 3000);
-            affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3000点獲得)`);
+            affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3,000点獲得)`);
             return;
         }
 
@@ -2579,7 +2579,7 @@ function executeDiamondSword(casterSocketId) {
             target.defenseCard = null;
             applyScoreChange(target, -5000);
             target.immunityCount = 2;
-            affectedLogs.push(`${target.name}(-5000点・手札防御全破棄・選択不可2T)`);
+            affectedLogs.push(`${target.name}(-5,000点・手札防御全破棄・選択不可2T)`);
         }
     });
 
@@ -2650,7 +2650,7 @@ function executeStandardAttack(attackerId, targetId, cardId) {
 
     applyScoreChange(target, -3000);
     target.immunityCount = 2;
-    broadcastGameState(logPrefix + rateText + `命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+    broadcastGameState(logPrefix + rateText + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 }
 
 function executeWoodSwordAttack(attackerId, targetTypeOrId) {
@@ -2738,7 +2738,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
 
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            broadcastGameState(logPrefix + `命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました。)`);
+            broadcastGameState(logPrefix + `命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。)`);
         }
 
         processNextLowerTarget();
@@ -2756,7 +2756,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
     if (scoreDiff < 0 || scoreDiff > 5000) {
         const socket = io.sockets.sockets.get(attackerId);
         if (socket) {
-            socket.emit('errorMessage', '自分との得点差が0点以上+5000点以下のプレイヤーのみ攻撃対象に指定できます。');
+            socket.emit('errorMessage', '自分との得点差が0点以上+5,000点以下のプレイヤーのみ攻撃対象に指定できます。');
         }
         return;
     }
@@ -2806,7 +2806,7 @@ function executeWoodSwordAttack(attackerId, targetTypeOrId) {
 
     applyScoreChange(target, -3000);
     target.immunityCount = 2;
-    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3000点！ (${target.name}は選択不可状態になりました)`);
+    broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
 }
 
 function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onComplete) {
@@ -2885,7 +2885,7 @@ function executeShieldSetAttack(attackerId, targetId, cardObj, maxAttacks, onCom
 
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3000点！ (${target.name}が選択不可状態になったため攻撃中断)`);
+        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}が選択不可状態になったため攻撃中断)`);
 
         onComplete();
     }
@@ -3001,7 +3001,7 @@ function executeDarkMatter(casterSocketId) {
         }
     });
 
-    let logMsg = `${player.name} が「ダークマター」を使用！ 無敵状態になり、+5000点獲得！`;
+    let logMsg = `${player.name} が「ダークマター」を使用！ 無敵状態になり、+5,000点獲得！`;
     if (penalizedNames.length > 0) {
         logMsg += ` 対象結果: ${penalizedNames.join(', ')}`;
     }
@@ -3054,7 +3054,7 @@ function executeSmokeScreen(casterSocketId) {
             affectedNames.push(`${target.name}(${turns}T)`);
         });
 
-        const statusSuffix = anySuccess ? " (-1000点 & 暗闇付与)" : "";
+        const statusSuffix = anySuccess ? " (-1,000点 & 暗闇付与)" : "";
         broadcastGameState(`${caster.name} が「煙幕」を使用！ 対象: ${affectedNames.join(', ')}${statusSuffix}`);
     } else {
         const isInvincible = caster.invincibleTurns && caster.invincibleTurns > 0;
@@ -3071,7 +3071,7 @@ function executeSmokeScreen(casterSocketId) {
         const turns = (myRank === 1) ? 2 : 1;
         caster.darknessTurns = turns;
 
-        broadcastGameState(`${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果発動 (-1000点 & 暗闇${turns}ターン付与)`);
+        broadcastGameState(`${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果発動 (-1,000点 & 暗闇${turns}ターン付与)`);
     }
 }
 

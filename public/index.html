@@ -643,12 +643,12 @@
             <div class="modal-content" style="text-align:center; max-width:400px;">
                 <h3 style="margin-top:0; color:#f1c40f;">★ あなたのターンです</h3>
                 <p style="margin: 15px 0; font-size: 1.05em; line-height: 1.5;">
-                    ターン開始ボーナス (+3000点) を獲得しますか？
+                    ターン開始ボーナス (+3,000点) を獲得しますか？
                 </p>
                 <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
                     <button class="btn" style="background:#27ae60; padding:12px; font-weight:bold;"
                         onclick="chooseBonusChoice(true)">
-                        ボーナスを受け取る (+3000点 & カード獲得)
+                        ボーナスを受け取る (+3,000点 & カード獲得)
                     </button>
                     <button class="btn" style="background:#7f8c8d; padding:10px;" onclick="chooseBonusChoice(false)">
                         受け取らない (カードのみ獲得)
@@ -664,7 +664,7 @@
                     <img src="/images/time_bomb.png"
                         style="width:100px; height:145px; object-fit:contain; border-radius:6px;" alt="時限爆弾">
                     <p style="font-size:0.85em; color:#cbd5e1; margin:8px 0;">
-                        自分との得点差が±3000点以内の相手1人に、50%の確率で時限爆弾を押し付けます。
+                        自分との得点差が±3,000点以内の相手1人に、50%の確率で時限爆弾を押し付けます。
                     </p>
                 </div>
                 <div id="time-bomb-modal-controls" style="margin-top: 15px;"></div>
@@ -963,7 +963,7 @@
             scores.forEach(s => {
                 const btn = document.createElement('button');
                 btn.className = 'btn';
-                btn.innerText = (s > 0 ? '+' : '') + s + '点';
+                btn.innerText = (s > 0 ? '+' : '') + s.toLocaleString() + '点';
                 btn.onclick = () => {
                     socket.emit('selectDraftScore', s);
                     btnContainer.querySelectorAll('button').forEach(b => b.disabled = true);
@@ -1294,7 +1294,7 @@
                             <span class="status-badge-count">${p.timeBombTurns}</span>
                             <div class="card-tooltip">
                                 <div style="font-weight: bold; color: #e74c3c; margin-bottom: 3px;">時限爆弾</div>
-                                <div>時限爆弾：カウントが0になると、爆発して6000点ダメージを受け、さらに手札・防御カードをすべて失う。<br>自分との得点差が3000点以内の相手に受け渡すことができる(成功率50%)。</div>
+                                <div>時限爆弾：カウントが0になると、爆発して6,000点ダメージを受け、さらに手札・防御カードをすべて失う。<br>自分との得点差が3,000点以内の相手に受け渡すことができる(成功率50%)。</div>
                             </div>
                         </div>
                     `;
@@ -1451,7 +1451,7 @@
                 `;
             } else if (validTargets.length === 0) {
                 controls.innerHTML = `
-                    <div style="color:#e74c3c; font-weight:bold; margin-bottom:12px;">受け渡し可能な相手が存在しません（±3000点以内・無敵除く）</div>
+                    <div style="color:#e74c3c; font-weight:bold; margin-bottom:12px;">受け渡し可能な相手が存在しません（±3,000点以内・無敵除く）</div>
                     ${isWarningFromEndTurn ? `<button class="btn" style="background:#2980b9; width:100%; margin-bottom:6px;" onclick="closeTimeBombModal(); socket.emit('endTurn');">無視してターン終了</button>` : ''}
                     <button class="btn" style="background:#7f8c8d; width:100%;" onclick="closeTimeBombModal()">閉じる</button>
                 `;
@@ -1459,7 +1459,7 @@
                 let optionsHtml = '';
                 validTargets.forEach(t => {
                     const diff = t.score - myPlayer.score;
-                    const signStr = diff > 0 ? `+${diff}` : (diff < 0 ? `${diff}` : '±0');
+                    const signStr = diff > 0 ? `+${diff.toLocaleString()}` : (diff < 0 ? `${diff.toLocaleString()}` : '±0');
                     optionsHtml += `<option value="${t.id}">${t.name} (点差: ${signStr}点)</option>`;
                 });
 
@@ -2182,7 +2182,7 @@
             const hasDefense = !!myPlayer.defenseCard;
             let html = '';
 
-            // 排他制御状態のチェック（同種カードの連続使用を含む厳密判定）
+            // 排他制御状態のチェック
             const hasUsedOban = myPlayer.playedObanThisTurn;
             const hasUsedDarkMatter = myPlayer.playedDarkMatterThisTurn;
             const hasUsedOtherCard = myPlayer.playedHandCardThisTurn && !hasUsedOban && !hasUsedDarkMatter;
@@ -2213,7 +2213,7 @@
                     } else {
                         let scoreOptions = '';
                         for (let s = 8000; s >= 3000; s -= 1000) {
-                            scoreOptions += `<option value="${s}" ${s === 8000 ? 'selected' : ''}>+${s}点</option>`;
+                            scoreOptions += `<option value="${s}" ${s === 8000 ? 'selected' : ''}>+${s.toLocaleString()}点</option>`;
                         }
                         html += `
                             <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
@@ -2254,12 +2254,12 @@
                         html += `<button class="btn" style="background:#8e44ad; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダークマターを使用する</button>`;
                     }
                 } else if (card.id === 'omamori_koban') {
-                    html += `<button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">お守り小判を使用する (+3000点)</button>`;
+                    html += `<button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">お守り小判を使用する (+3,000点)</button>`;
                 } else if (card.id === 'omamori_koban_set') {
                     const maxUses = card.usesLeft || 3;
                     let countOptions = '';
                     for (let i = maxUses; i >= 1; i--) {
-                        countOptions += `<option value="${i}">${i}回分消費 (+${i * 2000}点)</option>`;
+                        countOptions += `<option value="${i}">${i}回分消費 (+${(i * 2000).toLocaleString()}点)</option>`;
                     }
                     html += `
                         <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
@@ -2282,7 +2282,7 @@
                         html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin-bottom:8px;">※現在、対象となるプレイヤーが存在しません</div>`;
                     } else {
                         const targetNames = targetPlayers.map(p => (p.id === myId ? `${p.name}(あなた)` : p.name)).join(', ');
-                        html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">攻撃対象 (1位±1000点): <b>${targetNames}</b></div>`;
+                        html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">攻撃対象 (1位±1,000点): <b>${targetNames}</b></div>`;
                     }
                     html += `<button class="btn" style="background:#0ea5e9; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダイヤの剣を発動する</button>`;
                 } else if (card.id === 'earthquake') {
@@ -2306,7 +2306,7 @@
                     const higherTargets = allPlayers.filter(p => p.id !== myId && p.score >= myScore && !isLaterPlayerInRound1(myId, p.id));
 
                     if (higherTargets.length === 0) {
-                        html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin-bottom:8px;">※同点以上の相手がいないため、自身に効果が発動します (-1000点＆暗闇)</div>`;
+                        html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin-bottom:8px;">※同点以上の相手がいないため、自身に効果が発動します (-1,000点＆暗闇)</div>`;
                     } else {
                         const targetNames = higherTargets.map(p => p.name).join(', ');
                         html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">効果対象 (同点以上): <b>${targetNames}</b></div>`;
