@@ -126,7 +126,7 @@ const CARD_DECK = [
         name: 'ダークマター',
         category: 'SPECIAL',
         image: '/images/dark_matter.png',
-        desc: '【使用時】自分の得点を+5000点し、次の自分のターン開始時まで、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる。\n【追加効果】このカードの使用により得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。'
+        desc: '【使用時】自分の得点を+5000点し、次の自分のターン開始時まで、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる。\n【追加効果】このカードの使用により得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
     },
     {
         id: 'steroid',
@@ -147,7 +147,7 @@ const CARD_DECK = [
 // デフォルト共通アバターID
 const DEFAULT_AVATAR_ID = 'avatar_default';
 
-// 選択可能なシステムプリセットアバター一覧（デフォルトは選択肢に含めない）
+// 選択可能なシステムプリセットアバター一覧
 const PRESET_AVATARS = [
     { id: 'avatar_1', name: '男性', image: '/images/avatars/avatar_1.png' },
     { id: 'avatar_2', name: '女性', image: '/images/avatars/avatar_2.png' },
@@ -626,6 +626,7 @@ function proceedToNextTurn() {
         nextPlayer.bombDrawnThisTurn = false;
         nextPlayer.playedHandCardThisTurn = false;
         nextPlayer.playedObanThisTurn = false;
+        nextPlayer.playedDarkMatterThisTurn = false;
 
         if (nextPlayer.invincibleTurns > 0 && nextPlayer.invincibleSource === 'DARK_MATTER') {
             nextPlayer.invincibleTurns = 0;
@@ -660,7 +661,7 @@ io.on('connection', (socket) => {
             id: socket.id,
             number: pNum,
             name: `P${pNum}`,
-            avatar: DEFAULT_AVATAR_ID, // 全プレイヤー共通のデフォルトアバター初期割り当て
+            avatar: DEFAULT_AVATAR_ID,
             score: 25000,
             prevScore: 25000,
             scoreChange: 0,
@@ -678,7 +679,8 @@ io.on('connection', (socket) => {
             bombTransferAttempted: false,
             bombDrawnThisTurn: false,
             playedHandCardThisTurn: false,
-            playedObanThisTurn: false
+            playedObanThisTurn: false,
+            playedDarkMatterThisTurn: false
         };
 
         socket.emit('init', {
@@ -719,7 +721,6 @@ io.on('connection', (socket) => {
         const player = gameState.players[socket.id];
         if (!player) return;
 
-        // デフォルトアバターへの手動変更は不可（不可逆ルール）
         if (avatarId === DEFAULT_AVATAR_ID) {
             socket.emit('errorMessage', 'デフォルトアバターに戻すことはできません。');
             return;
@@ -907,16 +908,18 @@ io.on('connection', (socket) => {
             return;
         }
 
-        if (card.id === 'omamori_oban') {
-            if (player.playedHandCardThisTurn && !player.playedObanThisTurn) {
-                socket.emit('errorMessage', '他のカードを使用したため発動できません。');
-                return;
-            }
-        } else {
-            if (player.playedObanThisTurn) {
-                socket.emit('errorMessage', '「お守り大判」を使用したため発動できません。');
-                return;
-            }
+        // 排他制御チェック（お守り大判 / ダークマター / 同種カード連続使用禁止）
+        if (player.playedObanThisTurn) {
+            socket.emit('errorMessage', '「お守り大判」を使用したため発動できません。');
+            return;
+        }
+        if (player.playedDarkMatterThisTurn) {
+            socket.emit('errorMessage', '「ダークマター」を使用したため発動できません。');
+            return;
+        }
+        if ((card.id === 'omamori_oban' || card.id === 'dark_matter') && player.playedHandCardThisTurn) {
+            socket.emit('errorMessage', '他のカードを使用したため発動できません。');
+            return;
         }
 
         if (card.id === 'omamori_oban') {
@@ -926,6 +929,15 @@ io.on('connection', (socket) => {
             player.playedObanThisTurn = true;
             player.hand.splice(cardIndex, 1);
             broadcastGameState(`${player.name} が「お守り大判」を使用し、+${addPoints}点獲得しました！`);
+            return;
+        }
+
+        if (card.id === 'dark_matter') {
+            player.playedHandCardThisTurn = true;
+            player.playedDarkMatterThisTurn = true;
+            player.hand.splice(cardIndex, 1);
+            if (player.timeBombTurns > 0) player.timeBombTurns = 0;
+            executeDarkMatter(socket.id);
             return;
         }
 
@@ -966,10 +978,6 @@ io.on('connection', (socket) => {
 
             socket.emit('syncGameState', getSyncPayload(`「無敵アーマー」を使用しました。4ターンの間「無敵状態」になります。`));
             socket.broadcast.emit('syncGameState', getSyncPayload(''));
-        } else if (card.id === 'dark_matter') {
-            player.hand.splice(cardIndex, 1);
-            if (player.timeBombTurns > 0) player.timeBombTurns = 0;
-            executeDarkMatter(socket.id);
         } else if (card.id === 'steroid') {
             player.steroidTurns = 4;
             player.steroidRevealed = false;
@@ -1150,6 +1158,7 @@ io.on('connection', (socket) => {
             }
 
             player.defenseCard = { card, usesLeft: uses, revealed: false };
+            player.playedHandCardThisTurn = true; // 防御セットも手札使用として記録
             player.hand.splice(cardIndex, 1);
 
             if (showOtherPlayersInfo) {

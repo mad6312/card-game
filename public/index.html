@@ -177,7 +177,7 @@
             box-sizing: border-box;
         }
 
-        /* 雀卓レイアウト（左右枠を240pxに拡張） */
+        /* 雀卓レイアウト（左右枠240px） */
         .mj-table {
             display: grid;
             grid-template-columns: 240px 1fr 240px;
@@ -284,7 +284,6 @@
             z-index: 10;
         }
 
-        /* ステータスバッジラッパー */
         .status-badge-wrapper {
             position: relative;
             display: inline-flex;
@@ -308,7 +307,6 @@
             display: block;
         }
 
-        /* 丸囲み数字バッジ（全方位余裕確保・マスク防止） */
         .status-badge-count {
             position: absolute;
             top: -6px;
@@ -332,7 +330,6 @@
             line-height: 1;
         }
 
-        /* バッジ表示専用行コンテナ */
         .status-badges-row {
             display: flex;
             align-items: center;
@@ -380,12 +377,10 @@
             border-color: #f1c40f;
         }
 
-        /* テンプレート用ツールチップ */
         .card-tooltip {
             display: none !important;
         }
 
-        /* 画面内に自動配置されるフローティングツールチップ */
         #global-tooltip {
             position: fixed;
             display: none;
@@ -538,7 +533,6 @@
     <details class="debug-score-panel" open>
         <summary>🛠 デバッグパネル</summary>
 
-        <!-- デバッグ共通設定トグル群 -->
         <div
             style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; flex-direction: column; gap: 6px;">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -554,7 +548,6 @@
                     onclick="openSettingsModal()">⚙ カード排出設定</button>
             </div>
 
-            <!-- 他プレイヤー情報公開/非公開切り替え -->
             <div style="display: flex; align-items: center; justify-content: space-between;">
                 <span style="font-weight: bold; color: #cbd5e1; font-size: 11px;">他者情報(手札・防御):</span>
                 <label style="cursor: pointer; font-size: 11px;">
@@ -571,7 +564,6 @@
     </details>
 
     <div class="container">
-        <!-- 画面右上の設定メニューボタン -->
         <button class="user-settings-btn" onclick="openUserSettingsModal()" title="ゲーム設定">⚙ 設定</button>
 
         <h2>対戦カードゲーム</h2>
@@ -612,7 +604,6 @@
                 <h3 style="margin-top:0; color:#f1c40f; border-bottom:1px solid #475569; padding-bottom:8px;">⚙ ゲーム設定
                 </h3>
 
-                <!-- セクション：プレイヤー名変更 -->
                 <div class="settings-section">
                     <div class="settings-section-title">👤 プレイヤー名変更</div>
                     <div style="display: flex; gap: 8px; margin-top: 6px;">
@@ -624,7 +615,6 @@
                     <div style="font-size: 0.8em; color: #94a3b8; margin-top: 4px;">※ゲーム内の盤面やログに即座に反映されます。</div>
                 </div>
 
-                <!-- セクション：プレイヤーアバター変更 -->
                 <div class="settings-section">
                     <div class="settings-section-title">🖼 プレイヤーアバター変更</div>
                     <div id="avatar-picker-list" class="avatar-picker-container"></div>
@@ -732,7 +722,6 @@
         let lastKnownPlayerNames = {};
         let showOtherPlayersInfo = true;
 
-        // 選択可能なシステムプリセットアバター一覧
         let availablePresetAvatars = [
             { id: 'avatar_1', name: '男性', image: '/images/avatars/avatar_1.png' },
             { id: 'avatar_2', name: '女性', image: '/images/avatars/avatar_2.png' },
@@ -772,7 +761,6 @@
             smoke_screen: '煙幕'
         };
 
-        // セットカードの残り回数を動的に反映したカード説明文を生成する関数
         function getFormattedCardDesc(card, currentUses) {
             if (!card || !card.desc) return '';
             let desc = card.desc;
@@ -1179,14 +1167,12 @@
                 const hasActed = latestGameState && latestGameState.actedPlayerIds && latestGameState.actedPlayerIds.includes(p.id);
                 const actedBadgeHtml = hasActed ? `<div class="acted-badge">済</div>` : '';
 
-                // アバター画像URL解決
                 let avatarImgSrc = '/images/avatars/avatar_default.png';
                 if (p.avatar && p.avatar !== 'avatar_default') {
                     const matched = availablePresetAvatars.find(a => a.id === p.avatar);
                     if (matched) avatarImgSrc = matched.image;
                 }
 
-                // 防御カード表示HTML生成（残り回数の動的反映）
                 let defInfo = '<span style="color:#7f8c8d;">なし</span>';
                 if (p.defenseCard) {
                     const card = p.defenseCard.card;
@@ -1207,7 +1193,6 @@
                     `;
                 }
 
-                // 手札・防御情報の領域制御
                 let infoRowHtml = '';
                 if (isMe || showOtherPlayersInfo) {
                     infoRowHtml = `<div style="margin-top:3px;">手札: <b>${p.hand ? p.hand.length : 0}</b> 枚 | 防御: ${defInfo}</div>`;
@@ -1218,7 +1203,6 @@
                     }
                 }
 
-                // 自分の手札エリア（残り回数の動的反映）
                 let handHtml = '';
                 if (isMe) {
                     handHtml += `<div style="margin-top:6px;"><b>手札 (クリックして使用)</b>`;
@@ -1245,7 +1229,6 @@
 
                 let scoreDisplayHtml = getPlayerScoreHtml(p, now);
 
-                // ステータスバッジ群の構築
                 let statusBadgesHtml = '';
 
                 if (p.immunityCount > 0) {
@@ -1348,7 +1331,6 @@
             });
         }
 
-        // グローバルツールチップの画面内自動位置補正ロジック
         document.addEventListener('mouseover', (e) => {
             const wrapper = e.target.closest('.def-card-wrapper, .status-badge-wrapper, .hand-card-wrapper');
             const tooltipEl = document.getElementById('global-tooltip');
@@ -2006,17 +1988,11 @@
                     if (candidates.length > 0) {
                         const minDiff = Math.min(...candidates.map(p => p.score - myScore));
                         const closestGroup = candidates.filter(p => (p.score - myScore) === minDiff);
-                        const m = closestGroup.length;
-
-                        if (m === 1) {
-                            displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">100% (必中)</span>`;
-                        } else {
-                            const prob = Math.min(1.0, attackCount / m);
-                            const ratePercent = Math.round(prob * 1000) / 10;
-                            const rateDetailStr = closestGroup.map(p => `${p.name}: ${ratePercent}%`).join(', ');
-                            const countText = (cardId === 'bronze_shield_set' && attackCount > 1) ? ` (${attackCount}回連撃/実質選出率)` : ` (選出確率)`;
-                            displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${countText}</span>`;
-                        }
+                        const count = closestGroup.length;
+                        const indivRate = Math.round((100 / count) * 10) / 10;
+                        const rateDetailStr = closestGroup.map(p => `${p.name}: ${indivRate}%`).join(', ');
+                        const countText = (cardId === 'bronze_shield_set' && attackCount > 1) ? ` (${attackCount}回連撃/実質選出率)` : ` (選出確率)`;
+                        displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${countText}</span>`;
                     }
                     return;
                 } else if (selectEl.value === 'LOWER' && myPlayer) {
@@ -2206,16 +2182,32 @@
             const hasDefense = !!myPlayer.defenseCard;
             let html = '';
 
-            const hasUsedOtherCard = myPlayer.playedHandCardThisTurn && !myPlayer.playedObanThisTurn;
+            // 排他制御状態のチェック（同種カードの連続使用を含む厳密判定）
             const hasUsedOban = myPlayer.playedObanThisTurn;
+            const hasUsedDarkMatter = myPlayer.playedDarkMatterThisTurn;
+            const hasUsedOtherCard = myPlayer.playedHandCardThisTurn && !hasUsedOban && !hasUsedDarkMatter;
 
             if (source === 'HAND') {
-                if (card.id === 'omamori_oban') {
+                if (hasUsedOban) {
+                    html += `
+                        <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center;">
+                            <div style="color:#e74c3c; font-weight:bold; font-size:0.9em; margin-bottom:6px;">※「お守り大判」を使用したため発動できません</div>
+                            <button class="btn" disabled style="background:#7f8c8d; width:100%; cursor:not-allowed;">使用不可</button>
+                        </div>
+                    `;
+                } else if (hasUsedDarkMatter) {
+                    html += `
+                        <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center;">
+                            <div style="color:#e74c3c; font-weight:bold; font-size:0.9em; margin-bottom:6px;">※「ダークマター」を使用したため発動できません</div>
+                            <button class="btn" disabled style="background:#7f8c8d; width:100%; cursor:not-allowed;">使用不可</button>
+                        </div>
+                    `;
+                } else if (card.id === 'omamori_oban') {
                     if (hasUsedOtherCard) {
                         html += `
-                            <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:left;">
+                            <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center;">
                                 <div style="color:#e74c3c; font-weight:bold; font-size:0.9em; margin-bottom:6px;">※他のカードを使用したため発動できません</div>
-                                <button class="btn" disabled style="background:#7f8c8d; width:100%;">お守り大判を使用する</button>
+                                <button class="btn" disabled style="background:#7f8c8d; width:100%; cursor:not-allowed;">お守り大判を使用する</button>
                             </div>
                         `;
                     } else {
@@ -2231,12 +2223,36 @@
                             </div>
                         `;
                     }
-                } else if (hasUsedOban) {
-                    html += `
-                        <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center;">
-                            <div style="color:#e74c3c; font-weight:bold; font-size:0.9em;">※「お守り大判」を使用したため発動できません</div>
-                        </div>
-                    `;
+                } else if (card.id === 'dark_matter') {
+                    if (hasUsedOtherCard) {
+                        html += `
+                            <div style="background:#1a252f; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center;">
+                                <div style="color:#e74c3c; font-weight:bold; font-size:0.9em; margin-bottom:6px;">※他のカードを使用したため発動できません</div>
+                                <button class="btn" disabled style="background:#7f8c8d; width:100%; cursor:not-allowed;">ダークマターを使用する</button>
+                            </div>
+                        `;
+                    } else {
+                        const allPlayers = Object.values(latestGameState.players);
+                        const prevMyScore = myPlayer.score;
+                        const newMyScore = prevMyScore + 5000;
+
+                        const penaltyTargets = allPlayers.filter(p => {
+                            if (p.id === myId) return false;
+                            if (isLaterPlayerInRound1(myId, p.id)) return false;
+                            if (p.invincibleTurns > 0 || (p.immunityCount && p.immunityCount > 0)) return false;
+                            const isConditionA = (p.score === prevMyScore);
+                            const isConditionB = (p.score > prevMyScore && newMyScore >= p.score);
+                            return isConditionA || isConditionB;
+                        });
+
+                        if (penaltyTargets.length === 0) {
+                            html += `<div style="color:#94a3b8; font-size:0.85em; margin-bottom:8px;">※使用時に条件を満たす相手はいません（ペナルティなし）</div>`;
+                        } else {
+                            const targetNames = penaltyTargets.map(p => p.name).join(', ');
+                            html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">ペナルティ対象(50%): <b>${targetNames}</b></div>`;
+                        }
+                        html += `<button class="btn" style="background:#8e44ad; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダークマターを使用する</button>`;
+                    }
                 } else if (card.id === 'omamori_koban') {
                     html += `<button class="btn" style="background:#f39c12; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">お守り小判を使用する (+3000点)</button>`;
                 } else if (card.id === 'omamori_koban_set') {
@@ -2282,27 +2298,6 @@
                     html += `<button class="btn" style="background:#d35400; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">地震を発動する</button>`;
                 } else if (card.id === 'invincible_armor') {
                     html += `<button class="btn" style="background:#f1c40f; color:#000; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">無敵アーマーを使用する</button>`;
-                } else if (card.id === 'dark_matter') {
-                    const allPlayers = Object.values(latestGameState.players);
-                    const prevMyScore = myPlayer.score;
-                    const newMyScore = prevMyScore + 5000;
-
-                    const penaltyTargets = allPlayers.filter(p => {
-                        if (p.id === myId) return false;
-                        if (isLaterPlayerInRound1(myId, p.id)) return false;
-                        if (p.invincibleTurns > 0 || (p.immunityCount && p.immunityCount > 0)) return false;
-                        const isConditionA = (p.score === prevMyScore);
-                        const isConditionB = (p.score > prevMyScore && newMyScore >= p.score);
-                        return isConditionA || isConditionB;
-                    });
-
-                    if (penaltyTargets.length === 0) {
-                        html += `<div style="color:#94a3b8; font-size:0.85em; margin-bottom:8px;">※使用時に条件を満たす相手はいません（ペナルティなし）</div>`;
-                    } else {
-                        const targetNames = penaltyTargets.map(p => p.name).join(', ');
-                        html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">ペナルティ対象(50%): <b>${targetNames}</b></div>`;
-                    }
-                    html += `<button class="btn" style="background:#8e44ad; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダークマターを使用する</button>`;
                 } else if (card.id === 'steroid') {
                     html += `<button class="btn" style="background:#e67e22; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ステロイドを使用する</button>`;
                 } else if (card.id === 'smoke_screen') {
