@@ -14,14 +14,14 @@ const CARD_DECK = [
         name: '木の盾',
         category: 'DEFENSE',
         image: '/images/wood_shield.png',
-        desc: '攻撃: 同点以上または下位全員から選択(差に応じた命中率/ヒットで-3000&選択不可&中断) / 防御: 攻撃を1度無効'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。'
     },
     {
         id: 'wood_shield_set',
         name: '木の盾セット',
         category: 'DEFENSE',
         image: '/images/wood_shield_set.png',
-        desc: '攻撃: 同点以上または下位全員(差に応じた命中率/順次判定/ヒット・無効化で回数消費) / 防御: 攻撃を無効(計3回で破棄)'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分以上の得点を持つ相手全員 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】100-(得点差/100)%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。\n\n【残り回数】3回'
     },
     {
         id: 'bronze_shield',
@@ -42,14 +42,14 @@ const CARD_DECK = [
         name: '木の剣',
         category: 'ATTACK',
         image: '/images/wood_sword.png',
-        desc: '攻撃: 自分より上位なら単体(5000点差以内/成功率1/2)、下位なら全員順次判定(成功率1/2) / 防御: 攻撃を1度無効(高得点者からの攻撃は無効化不可)'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。'
     },
     {
         id: 'wood_sword_set',
         name: '木の剣セット',
         category: 'ATTACK',
         image: '/images/wood_sword_set.png',
-        desc: '攻撃: 自分より上位なら単体(5000点差以内/成功率1/2)、下位なら全員順次判定(成功率1/2/指定回数攻撃) / 防御: 攻撃を無効(計3回で破棄/高得点者からの攻撃は無効化不可)'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分より得点が下の相手全員\n【効果】対象に3000点ダメージを与える。\n【命中率】50%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n\n【残り回数】3回'
     },
     {
         id: 'shotgun',
@@ -63,14 +63,14 @@ const CARD_DECK = [
         name: 'グレネード',
         category: 'ATTACK',
         image: '/images/grenade.png',
-        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分との得点差が-5000点以内の相手全員\n【追加対象】上記対象との得点差が1000点以内のプレイヤー（自分も含む）\n【効果】対象の手札・防御カードをすべて破棄し、さらに5000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】\n上：50%\n下：80%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n【追加効果】無効化時、自分との得点差が-1000点以内の相手全員の手札・防御カードをすべて破棄し、さらに5000点ダメージを与える。'
+        desc: '<span style="color:#e74c3c; font-weight:bold;">【攻撃】</span>\n【対象】自分との得点差が+5000点以内の相手1人 または 自分との得点差が-5000点以内の相手全員\n【追加対象】上記対象との得点差が1000点以内のプレイヤー（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、さらに5000点ダメージを与える。このカードによる攻撃は防御カードを貫通する。\n【命中率】\n上：50%\n下：80%\n\n<span style="color:#3498db; font-weight:bold;">【防御】</span>\n【効果】一部を除く相手からの攻撃を1回無効化する。ただし、自分より得点が高い相手からの攻撃を無効化することはできない。\n【追加効果】無効化時、自分との得点差が-1000点以内の相手全員の手札・防御カードをすべて破棄し、さらに5000点ダメージを与える。'
     },
     {
         id: 'diamond_sword',
         name: 'ダイヤの剣',
         category: 'ATTACK',
         image: '/images/diamond_sword.png',
-        desc: '【対象】1位、および1位と得点差が±1000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札と防御カードをすべて捨て、5000点ダメージを与える。（必中/無敵・ステロイド・選択不可は防御破棄のみ）'
+        desc: '【対象】1位、および1位と得点差が±1000点以内のプレイヤー全員（自分も含む）\n【効果】対象の手札・防御カードをすべて捨て、5000点ダメージを与える。'
     },
     {
         id: 'earthquake',
@@ -105,42 +105,42 @@ const CARD_DECK = [
         name: 'お守り大判',
         category: 'SPECIAL',
         image: '/images/omamori_oban.png',
-        desc: '【使用時】自分の得点を+3000点〜+8000点の範囲で選択して加算する。\n【制限】このターン中、手札から他のカードを使用できない。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費し、「ダイヤの剣」を回避した上で自分の得点を+8000点する。'
+        desc: '【使用時】自分の得点を+3000点〜+8000点の範囲で選択して加算する。\n【所有時】自分が「ダイヤの剣」の対象となった時、手札のこのカードを自動で消費し、「ダイヤの剣」を回避した上で自分の得点を+8000点する。\n<span style="color:#e67e22; font-weight:bold;">【制限】このターン中、手札から他のカードを使用できない。</span>'
     },
     {
         id: 'disaster',
         name: '大災害',
         category: 'ATTACK',
         image: '/images/disaster.png',
-        desc: '使用者以外全員対象(命中100%)。手札/防御カード全破棄。1位:-6000/2位:-4000/3位:-2000/4位:-1000。ダメージ対象は選択不可(1巡分)付与。'
+        desc: '【使用時】相手全員に順位に応じたダメージを与える。\n1位:6000点/2位:4000点/3位:2000点/4位:1000点\n【追加効果】対象の手札・防御カードをすべて破棄する。'
     },
     {
         id: 'invincible_armor',
         name: '無敵アーマー',
         category: 'SPECIAL',
         image: '/images/invincible_armor.png',
-        desc: '特殊カード: 使用から合計4ターン経過まで「無敵状態」になる。防御カードセット時は使用不可。使用時手札から破棄。'
+        desc: '【使用時】4ターンの間、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる（対戦相手には非公開）。\n【追加効果】このカードによる「無敵状態」解除時、自分の得点を+1000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。'
     },
     {
         id: 'dark_matter',
         name: 'ダークマター',
         category: 'SPECIAL',
         image: '/images/dark_matter.png',
-        desc: '特殊: 次の自分ターンまで無敵状態付与＆+5000点。使用前と同点、または使用後に追いついた/逆転した相手(無敵・選択不可除く)の手札・防御カード全破棄＆-3000点＆選択不可(2ターン)付与。'
+        desc: '【使用時】自分の得点を+5000点し、次の自分のターン開始時まで、あらゆる攻撃カードの効果を受けなくなる「無敵状態」になる。\n【追加効果】このカードの使用により得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。'
     },
     {
         id: 'steroid',
         name: 'ステロイド',
         category: 'SPECIAL',
         image: '/images/steroid.png',
-        desc: '特殊: 使用から4ターン「ステロイド状態」になる。解除時に+1000点。解除時に自分と同点、または追いついた/逆転した相手(無敵・ステロイド・選択不可除く)に50%で手札・防御全破棄＆-3000点＆選択不可付与。'
+        desc: '【使用時】4ターンの間、一部を除く攻撃カードの効果を受けなくなる「ステロイド状態」になる（対戦相手には非公開）。\n【追加効果】「ステロイド状態」解除時、自分の得点を+1000点し、これにより得点差が追いついた相手がいた場合、50%の確率でその相手の手札・防御カードをすべて捨て、さらに3000点ダメージを与える。'
     },
     {
         id: 'smoke_screen',
         name: '煙幕',
         category: 'ATTACK',
         image: '/images/smoke_screen.png',
-        desc: '自分以上の得点を持つ相手全員に-1000点＆暗闇状態(対象が1位なら2T/それ以外1T)を付与。該当者がいない場合は自身に効果発動。'
+        desc: '【使用時】自分以上の得点を持つ相手全員に1000点ダメージを与える。\n【追加効果】対象に攻撃カード使用時の命中率が半減される「暗闇状態」を付与する。「暗闇状態」は対象プレイヤーのターン終了時まで継続する。'
     }
 ];
 
@@ -149,12 +149,12 @@ const DEFAULT_AVATAR_ID = 'avatar_default';
 
 // 選択可能なシステムプリセットアバター一覧（デフォルトは選択肢に含めない）
 const PRESET_AVATARS = [
-    { id: 'avatar_1', name: '戦士', image: '/images/avatars/avatar_1.png' },
-    { id: 'avatar_2', name: '魔法使い', image: '/images/avatars/avatar_2.png' },
-    { id: 'avatar_3', name: '僧侶', image: '/images/avatars/avatar_3.png' },
-    { id: 'avatar_4', name: '盗賊', image: '/images/avatars/avatar_4.png' },
-    { id: 'avatar_5', name: '忍者', image: '/images/avatars/avatar_5.png' },
-    { id: 'avatar_6', name: '騎士', image: '/images/avatars/avatar_6.png' }
+    { id: 'avatar_1', name: '男性', image: '/images/avatars/avatar_1.png' },
+    { id: 'avatar_2', name: '女性', image: '/images/avatars/avatar_2.png' },
+    { id: 'avatar_3', name: '少年', image: '/images/avatars/avatar_3.png' },
+    { id: 'avatar_4', name: '少女', image: '/images/avatars/avatar_4.png' },
+    { id: 'avatar_5', name: 'ニワトリ', image: '/images/avatars/avatar_5.png' },
+    { id: 'avatar_6', name: '牛', image: '/images/avatars/avatar_6.png' }
 ];
 
 let cardSettings = {
