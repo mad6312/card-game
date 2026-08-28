@@ -303,7 +303,6 @@ function proceedToNextTurn() {
         }
 
         let finalLog = '';
-        // 先行ログ出力されていない場合のみ expireLogs を連結
         if (!alreadyLoggedExpire && expireLogs.length > 0) {
             finalLog += expireLogs.join('\n') + '\n';
         }
@@ -780,7 +779,7 @@ io.on('connection', (socket) => {
                 }
             } else if (card.id === 'shotgun') {
                 player.hand.splice(cardIndex, 1);
-                battle.executeShotgunAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
+                battle.executeShotgunAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
             } else {
                 const target = gameState.players[targetPlayerId];
                 if (!target) {

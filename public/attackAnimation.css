@@ -116,6 +116,81 @@
     background: #000;
 }
 
+/* ショットガン専用：マズルフラッシュ（銃口閃光） */
+.cutin-muzzle-flash {
+    position: absolute;
+    right: -25px;
+    top: 50%;
+    transform: translateY(-50%) scale(0);
+    width: 50px;
+    height: 50px;
+    background: radial-gradient(circle, #fff 0%, #f39c12 40%, #e74c3c 70%, transparent 80%);
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.cutin-muzzle-flash.fire {
+    animation: muzzleFlashAnim 0.18s ease-out;
+}
+
+@keyframes muzzleFlashAnim {
+    0% {
+        transform: translateY(-50%) scale(0.2);
+        opacity: 1;
+    }
+
+    50% {
+        transform: translateY(-50%) scale(1.6);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-50%) scale(0.5);
+        opacity: 0;
+    }
+}
+
+/* ショットガン専用：銃弾トレーサー（高速弾丸光線） */
+.cutin-bullet-tracer {
+    position: absolute;
+    top: 50%;
+    left: 260px;
+    transform: translateY(-50%);
+    width: 45px;
+    height: 12px;
+    background: linear-gradient(90deg, transparent 0%, #f39c12 30%, #fff 90%, #fff 100%);
+    border-radius: 6px;
+    box-shadow: 0 0 15px #f39c12, 0 0 25px #ff4757;
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cutin-bullet-tracer.active {
+    opacity: 1;
+}
+
+/* 射撃時の攻撃側リコイル反動 */
+.recoil-action {
+    animation: recoilAnim 0.22s ease-out;
+}
+
+@keyframes recoilAnim {
+    0% {
+        transform: translateY(-50%) translateX(0);
+    }
+
+    30% {
+        transform: translateY(-50%) translateX(-22px);
+    }
+
+    100% {
+        transform: translateY(-50%) translateX(0);
+    }
+}
+
 /* 対象側（右側）ターゲットグループコンテナ */
 .cutin-defenders-group {
     position: absolute;
@@ -199,6 +274,11 @@
     text-shadow: 0 0 12px rgba(46, 213, 115, 0.9);
 }
 
+.badge-pierce {
+    color: #a855f7;
+    text-shadow: 0 0 15px rgba(168, 85, 247, 0.95), 0 0 25px rgba(236, 72, 153, 0.8);
+}
+
 .badge-invincible {
     color: #ffa502;
     text-shadow: 0 0 15px rgba(255, 165, 2, 0.9);
@@ -225,6 +305,28 @@
 .cutin-def-shield-card.show {
     transform: translateY(-50%) scale(1.1);
     opacity: 1;
+}
+
+/* 防御貫通時の防御カード破壊・吹き飛び */
+.cutin-def-shield-card.broken {
+    animation: shieldBreakBlowAnim 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes shieldBreakBlowAnim {
+    0% {
+        transform: translateY(-50%) scale(1.1) rotate(0deg);
+        filter: brightness(1.5);
+    }
+
+    30% {
+        transform: translateY(-70%) scale(1.2) rotate(-20deg);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: translate(350px, -150px) scale(0.3) rotate(-90deg);
+        opacity: 0;
+    }
 }
 
 /* 無敵・ステロイドバリアエフェクト */
