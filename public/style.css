@@ -332,11 +332,13 @@ body {
     overflow: visible;
 }
 
-/* 持ち点・LPアニメーション関連スタイル */
+/* 持ち点・LPアニメーション関連スタイル（表示位置最適化） */
 .player-score-container {
     position: relative;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    width: fit-content;
+    max-width: 100%;
     font-size: 1.05em;
     font-weight: bold;
     margin: 4px 0 2px 0;
@@ -373,8 +375,8 @@ body {
 .score-diff-popup {
     position: absolute;
     left: 100%;
-    top: -2px;
-    margin-left: 6px;
+    top: -1px;
+    margin-left: 8px;
     font-size: 0.95em;
     font-weight: bold;
     white-space: nowrap;
@@ -411,12 +413,12 @@ body {
 
     75% {
         opacity: 0.8;
-        transform: translateX(-10px) scale(0.85);
+        transform: translateX(-8px) scale(0.85);
     }
 
     100% {
         opacity: 0;
-        transform: translateX(-40px) scale(0.3);
+        transform: translateX(-24px) scale(0.3);
     }
 }
 
