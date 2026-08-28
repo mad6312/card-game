@@ -654,7 +654,7 @@ io.on('connection', (socket) => {
 
             if (card.id === 'wood_shield' && (targetPlayerId === 'EQUAL_OR_HIGHER' || targetPlayerId === 'LOWER')) {
                 player.hand.splice(cardIndex, 1);
-                battle.executeWoodShieldGroupAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                battle.executeWoodShieldGroupAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             } else if (card.id === 'bronze_shield') {
                 player.hand.splice(cardIndex, 1);
                 if (targetPlayerId === 'CLOSEST_HIGHER') {
@@ -803,7 +803,7 @@ io.on('connection', (socket) => {
                     });
                 } else {
                     player.hand.splice(cardIndex, 1);
-                    battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, broadcastGameState, skipIfImmuneToRound1CardEffect);
+                    battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect);
                 }
             }
         } else if (actionTarget === 'DEFENSE') {
@@ -850,7 +850,7 @@ io.on('connection', (socket) => {
 
         if (card.id === 'wood_shield' && (targetPlayerId === 'EQUAL_OR_HIGHER' || targetPlayerId === 'LOWER')) {
             player.defenseCard = null;
-            battle.executeWoodShieldGroupAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+            battle.executeWoodShieldGroupAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             return;
         }
 
@@ -999,7 +999,7 @@ io.on('connection', (socket) => {
         } else {
             defObj.usesLeft -= 1;
             if (defObj.usesLeft <= 0) player.defenseCard = null;
-            battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, broadcastGameState, skipIfImmuneToRound1CardEffect);
+            battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect);
         }
     });
 

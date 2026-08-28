@@ -130,6 +130,16 @@ socket.on('showCutIn', (data) => {
     }, 2500);
 });
 
+// 攻撃カットイン演出の受信リスナー
+socket.on('playAttackCutin', (data) => {
+    closeDropActionModal();
+    closeTimeBombModal();
+
+    if (window.AttackAnimation && typeof window.AttackAnimation.play === 'function') {
+        window.AttackAnimation.play(data);
+    }
+});
+
 socket.on('transferTimeBombResult', (data) => {
     closeTimeBombModal();
     if (isTimeBombModalTriggeredByEndTurn) {

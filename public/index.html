@@ -5,8 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>カード対戦ゲーム</title>
-    <!-- 分離されたスタイルシートの読み込み -->
+    <!-- メインスタイルシート -->
     <link rel="stylesheet" href="/style.css">
+    <!-- 攻撃カットインアニメーションスタイルシート -->
+    <link rel="stylesheet" href="/attackAnimation.css">
 </head>
 
 <body>
@@ -176,7 +178,14 @@
         </div>
     </div>
 
-    <!-- カットイン演出オーバーレイ -->
+    <!-- 攻撃カットイン全画面オーバーレイ -->
+    <div id="attack-cutin-layer" class="attack-cutin-layer">
+        <div class="attack-speed-lines"></div>
+        <div class="cutin-flash-overlay" id="cutin-flash-overlay"></div>
+        <div class="attack-cutin-stage" id="attack-cutin-stage"></div>
+    </div>
+
+    <!-- 全画面カード発動カットイン演出オーバーレイ -->
     <div id="cutin-overlay" class="cutin-overlay hidden">
         <div class="cutin-content">
             <img id="cutin-image" src="" alt="カードイラスト">
@@ -185,7 +194,9 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <!-- 分離されたフロントエンドロジックの読み込み -->
+    <!-- 攻撃カットイン演出制御モジュール -->
+    <script src="/attackAnimation.js"></script>
+    <!-- メインフロントエンドロジック -->
     <script src="/game.js"></script>
 </body>
 
