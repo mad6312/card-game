@@ -142,7 +142,6 @@ socket.on('playAttackCutin', (data) => {
 
     if (window.AttackAnimation && typeof window.AttackAnimation.play === 'function') {
         window.AttackAnimation.play(data, () => {
-            // カットイン完全終了後にフラグを解除し、保留されていたスコアアニメーションを発火
             isAttackCutinPlaying = false;
             if (pendingLPScoreQueue.length > 0) {
                 setTimeout(() => {
@@ -150,7 +149,7 @@ socket.on('playAttackCutin', (data) => {
                         const task = pendingLPScoreQueue.shift();
                         triggerLPScoreAnimation(task.id, task.startVal, task.endVal, task.diff);
                     }
-                }, 200); // 盤面復帰後200msの余韻を置いて発火
+                }, 200);
             }
         });
     } else {
@@ -326,7 +325,7 @@ socket.on('syncGameState', (data) => {
         logBox.innerText = data.log + '\n' + logBox.innerText;
     }
 
-    // 1. 各プレイヤーのスコア変動を厳密検知
+    // 1. 各プレイヤーのスコア変動を厳密検知＆開始値のロック
     const pendingScoreChanges = [];
     if (data.players) {
         Object.values(data.players).forEach(p => {
@@ -335,6 +334,10 @@ socket.on('syncGameState', (data) => {
 
             if (prevTargetScore !== currentTargetScore) {
                 const startVal = (typeof currentRenderedScores[p.id] === 'number') ? currentRenderedScores[p.id] : prevTargetScore;
+
+                // 変動中はアニメーション開始まで前回の表示値を維持
+                currentRenderedScores[p.id] = startVal;
+
                 pendingScoreChanges.push({
                     id: p.id,
                     startVal: startVal,
@@ -344,23 +347,24 @@ socket.on('syncGameState', (data) => {
                 targetRenderedScores[p.id] = currentTargetScore;
             } else {
                 targetRenderedScores[p.id] = currentTargetScore;
+                if (typeof currentRenderedScores[p.id] === 'undefined') {
+                    currentRenderedScores[p.id] = currentTargetScore;
+                }
             }
         });
     }
 
-    // 2. 盤面DOMの再構築
+    // 2. 盤面DOMの再構築（現在の維持値で安全に描画）
     updatePlayersUI(data.players, data.currentTurnPlayerId);
     updateTurnControls(data);
     renderDebugScorePanel(data.players);
 
     // 3. スコア変動演出のシーケンス制御
     if (isAttackCutinPlaying) {
-        // カットイン再生中はキューに保留
         pendingScoreChanges.forEach(change => {
             pendingLPScoreQueue.push(change);
         });
     } else {
-        // 通常時は即座にアニメーションを実行
         pendingScoreChanges.forEach(change => {
             triggerLPScoreAnimation(change.id, change.startVal, change.endVal, change.diff);
         });
@@ -378,12 +382,12 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     activeScorePopups[playerId] = {
         text: `${isPlus ? '+' : ''}${diffVal.toLocaleString()}`,
         isPlus: isPlus,
-        expiresAt: Date.now() + 1150 // ポップアップ滞留時間を1.15秒に延長
+        expiresAt: Date.now() + 1150
     };
 
     attachScorePopup(playerId);
 
-    const duration = 750; // ドラムロール時間を750msに調整
+    const duration = 750;
     const startTime = performance.now();
 
     function step(now) {
@@ -409,7 +413,7 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
             if (scoreValEl) {
                 scoreValEl.innerText = `${endVal.toLocaleString()}点`;
                 scoreValEl.classList.remove('pulse');
-                void scoreValEl.offsetWidth; // リフロー
+                void scoreValEl.offsetWidth;
                 scoreValEl.classList.add('pulse');
             }
 
@@ -660,7 +664,7 @@ function updatePlayersUI(players, currentTurnPlayerId) {
             badgeRowContainerHtml = `<div class="status-badges-row">${statusBadgesHtml}</div>`;
         }
 
-        // 表示値の決定（ロール中であれば現在地、なければ最新点数）
+        // 表示値の決定（ロール中・保留中であれば現在地、なければ最新点数）
         const scoreDisplayVal = (typeof currentRenderedScores[p.id] === 'number') ? currentRenderedScores[p.id] : p.score;
 
         box.innerHTML = `
@@ -1664,6 +1668,7 @@ function openDropCardModal(source, instanceId) {
 
                 const lowerCandidates = validCandidates.filter(p => p.score < myScore && (myScore - p.score) < 5000);
                 if (lowerCandidates.length > 0) {
+                    hasValidTarget = true;
                     const isDarkness = myPlayer.darknessTurns > 0;
                     let res;
                     if (card.id === 'bronze_shield_set') {
@@ -1798,6 +1803,7 @@ function openDropCardModal(source, instanceId) {
 
             const lowerCandidates = validCandidates.filter(p => p.score < myScore && (myScore - p.score) < 5000);
             if (lowerCandidates.length > 0) {
+                hasValidTarget = true;
                 const isDarkness = myPlayer.darknessTurns > 0;
                 let res;
                 if (card.id === 'bronze_shield_set') {

@@ -658,9 +658,9 @@ io.on('connection', (socket) => {
             } else if (card.id === 'bronze_shield') {
                 player.hand.splice(cardIndex, 1);
                 if (targetPlayerId === 'CLOSEST_HIGHER') {
-                    battle.executeBronzeShieldClosestAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                    battle.executeBronzeShieldClosestAttack(gameState, socket.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
                 } else if (targetPlayerId === 'LOWER') {
-                    battle.executeBronzeShieldGroupAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                    battle.executeBronzeShieldGroupAttack(gameState, socket.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
                 }
             } else if (card.id === 'bronze_shield_set') {
                 let cardObj = player.hand[cardIndex];
@@ -752,7 +752,7 @@ io.on('connection', (socket) => {
             } else if (card.id === 'wood_sword') {
                 if (targetPlayerId === 'ALL_LOWER') {
                     player.hand.splice(cardIndex, 1);
-                    battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
+                    battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 } else {
                     const target = gameState.players[targetPlayerId];
                     if (!target) {
@@ -766,7 +766,7 @@ io.on('connection', (socket) => {
                     if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
                     player.hand.splice(cardIndex, 1);
-                    battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
+                    battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 }
             } else if (card.id === 'shotgun') {
                 player.hand.splice(cardIndex, 1);
@@ -857,9 +857,9 @@ io.on('connection', (socket) => {
         if (card.id === 'bronze_shield') {
             player.defenseCard = null;
             if (targetPlayerId === 'CLOSEST_HIGHER') {
-                battle.executeBronzeShieldClosestAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                battle.executeBronzeShieldClosestAttack(gameState, socket.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             } else if (targetPlayerId === 'LOWER') {
-                battle.executeBronzeShieldGroupAttack(gameState, socket.id, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                battle.executeBronzeShieldGroupAttack(gameState, socket.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             }
             return;
         }
@@ -952,7 +952,7 @@ io.on('connection', (socket) => {
         if (card.id === 'wood_sword') {
             if (targetPlayerId === 'ALL_LOWER') {
                 player.defenseCard = null;
-                battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
+                battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 return;
             } else {
                 if (!targetPlayerId || !gameState.players[targetPlayerId] || targetPlayerId === socket.id) {
@@ -967,7 +967,7 @@ io.on('connection', (socket) => {
                 if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
                 player.defenseCard = null;
-                battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
+                battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 return;
             }
         }
