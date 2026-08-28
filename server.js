@@ -711,7 +711,7 @@ io.on('connection', (socket) => {
                 const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
-                battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
+                battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                     setTimeout(() => {
                         if (cardObj.usesLeft <= 0) {
                             const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
@@ -912,7 +912,7 @@ io.on('connection', (socket) => {
             const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
-            battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
+            battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
                 setTimeout(() => {
                     card.usesLeft = defObj.usesLeft;
                     if (defObj.usesLeft <= 0) player.defenseCard = null;
