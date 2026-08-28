@@ -6,7 +6,7 @@
 (function (window) {
     'use strict';
 
-    // カットイン用DOM要素の初期化取得
+    // カットイン用DOM要素の取得
     function getCutinElements() {
         return {
             layer: document.getElementById('attack-cutin-layer'),
@@ -48,7 +48,7 @@
         const defenderUnitMap = {};
 
         // 2. ディフェンダーユニットを横並び生成
-        defenders.forEach((def, index) => {
+        defenders.forEach((def) => {
             const unit = document.createElement('div');
             unit.className = 'cutin-defender-unit';
             unit.id = `cutin-def-${def.id}`;
@@ -94,10 +94,10 @@
             const defCardEl = document.getElementById(`cutin-def-card-${step.targetId}`);
             const auraEl = document.getElementById(`cutin-aura-${step.targetId}`);
 
-            // 攻撃側の目標突進座標を計算（対象の直前手前へ移動）
+            // 攻撃側の目標突進座標を計算（対象の手前150pxへ移動）
             const stageRect = stage.getBoundingClientRect();
             const defRect = defUnit.getBoundingClientRect();
-            const targetX = (defRect.left - stageRect.left) - 150; // 手前150px
+            const targetX = (defRect.left - stageRect.left) - 150;
 
             attackerEl.style.transition = 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)';
             attackerEl.style.transform = `translate(${targetX}px, -50%)`;
@@ -133,9 +133,10 @@
 
                     defUnit.classList.add('blown-away-action');
 
+                    // 命中インパクトの余韻を残して終了
                     setTimeout(() => {
                         finishAnimation();
-                    }, 800);
+                    }, 850);
 
                 } else if (step.result === 'BLOCK') {
                     // 【防御】
@@ -153,7 +154,7 @@
 
                     setTimeout(() => {
                         finishAnimation();
-                    }, 800);
+                    }, 850);
 
                 } else if (step.result === 'INVINCIBLE' || step.result === 'STEROID') {
                     // 【無敵 / ステロイド】
@@ -168,22 +169,25 @@
 
                     setTimeout(() => {
                         finishAnimation();
-                    }, 800);
+                    }, 850);
                 }
             }, 360);
         }
 
         function finishAnimation() {
             setTimeout(() => {
+                // カットインレイヤーをフェードアウト
                 layer.classList.remove('active');
+
+                // 完全にフェードアウト（250ms）完了後、DOMをクリアしコールバックを発火
                 setTimeout(() => {
                     stage.innerHTML = '';
                     if (onComplete) onComplete();
-                }, 250);
+                }, 280);
             }, 500);
         }
 
-        // 開幕0.3秒待機してから突進開始
+        // 開幕0.35秒待機してから突進開始
         setTimeout(runNextTargetSequence, 350);
     }
 

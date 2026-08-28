@@ -14,6 +14,10 @@ let showOtherPlayersInfo = true;
 let isTimeBombModalTriggeredByEndTurn = false;
 let skipBonusModal = true;
 
+// 攻撃カットイン再生状態＆スコアアニメーション保留キュー
+let isAttackCutinPlaying = false;
+let pendingLPScoreQueue = [];
+
 let availablePresetAvatars = [
     { id: 'avatar_1', name: '男性', image: '/images/avatars/avatar_1.png' },
     { id: 'avatar_2', name: '女性', image: '/images/avatars/avatar_2.png' },
@@ -130,13 +134,27 @@ socket.on('showCutIn', (data) => {
     }, 2500);
 });
 
-// 攻撃カットイン演出の受信リスナー
+// 攻撃カットイン演出の受信リスナー（完了コールバック連携版）
 socket.on('playAttackCutin', (data) => {
     closeDropActionModal();
     closeTimeBombModal();
+    isAttackCutinPlaying = true;
 
     if (window.AttackAnimation && typeof window.AttackAnimation.play === 'function') {
-        window.AttackAnimation.play(data);
+        window.AttackAnimation.play(data, () => {
+            // カットイン完全終了後にフラグを解除し、保留されていたスコアアニメーションを発火
+            isAttackCutinPlaying = false;
+            if (pendingLPScoreQueue.length > 0) {
+                setTimeout(() => {
+                    while (pendingLPScoreQueue.length > 0) {
+                        const task = pendingLPScoreQueue.shift();
+                        triggerLPScoreAnimation(task.id, task.startVal, task.endVal, task.diff);
+                    }
+                }, 200); // 盤面復帰後200msの余韻を置いて発火
+            }
+        });
+    } else {
+        isAttackCutinPlaying = false;
     }
 });
 
@@ -335,13 +353,21 @@ socket.on('syncGameState', (data) => {
     updateTurnControls(data);
     renderDebugScorePanel(data.players);
 
-    // 3. スコア変動があったプレイヤーのみアニメーションを実行
-    pendingScoreChanges.forEach(change => {
-        triggerLPScoreAnimation(change.id, change.startVal, change.endVal, change.diff);
-    });
+    // 3. スコア変動演出のシーケンス制御
+    if (isAttackCutinPlaying) {
+        // カットイン再生中はキューに保留
+        pendingScoreChanges.forEach(change => {
+            pendingLPScoreQueue.push(change);
+        });
+    } else {
+        // 通常時は即座にアニメーションを実行
+        pendingScoreChanges.forEach(change => {
+            triggerLPScoreAnimation(change.id, change.startVal, change.endVal, change.diff);
+        });
+    }
 });
 
-/* LP風得点変動アニメーション制御（DOM動的追従＆完走保護版） */
+/* LP風得点変動アニメーション制御（視認性向上・完走保護版） */
 function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     if (activeScoreRollAnimators[playerId]) {
         cancelAnimationFrame(activeScoreRollAnimators[playerId]);
@@ -352,24 +378,23 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     activeScorePopups[playerId] = {
         text: `${isPlus ? '+' : ''}${diffVal.toLocaleString()}`,
         isPlus: isPlus,
-        expiresAt: Date.now() + 550
+        expiresAt: Date.now() + 1150 // ポップアップ滞留時間を1.15秒に延長
     };
 
     attachScorePopup(playerId);
 
-    const duration = 480; // ms
+    const duration = 750; // ドラムロール時間を750msに調整
     const startTime = performance.now();
 
     function step(now) {
         const elapsed = now - startTime;
         const progress = Math.min(elapsed / duration, 1);
 
-        const easeProgress = 1 - (1 - progress) * (1 - progress);
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
         const currentVal = Math.round(startVal + (endVal - startVal) * easeProgress);
 
         currentRenderedScores[playerId] = currentVal;
 
-        // 毎回最新のDOM要素を取得して安全に書き込み
         const scoreValEl = document.getElementById(`score-val-${playerId}`);
         if (scoreValEl) {
             scoreValEl.innerText = `${currentVal.toLocaleString()}点`;
@@ -392,7 +417,7 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
                 delete activeScorePopups[playerId];
                 const popup = document.getElementById(`score-popup-${playerId}`);
                 if (popup && popup.parentNode) popup.remove();
-            }, 100);
+            }, 350);
         }
     }
 
@@ -848,10 +873,9 @@ function updateTurnControls(data) {
 
     if (data.turnPhase === 'BONUS_CHOICE') {
         if (skipBonusModal) {
-            // アニメーション実行中であれば少し待機してから自動選択を送信
-            const hasActiveAnim = Object.keys(activeScoreRollAnimators).length > 0;
+            const hasActiveAnim = Object.keys(activeScoreRollAnimators).length > 0 || isAttackCutinPlaying;
             if (hasActiveAnim) {
-                setTimeout(() => chooseBonusChoice(false), 550);
+                setTimeout(() => chooseBonusChoice(false), 650);
             } else {
                 chooseBonusChoice(false);
             }
