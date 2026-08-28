@@ -262,7 +262,7 @@ function proceedToNextTurn() {
         }
     });
 
-    function finalizeNextTurn() {
+    function finalizeNextTurn(alreadyLoggedExpire = false) {
         if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
             gameState.round += 1;
             gameState.actedPlayerIds = [];
@@ -276,6 +276,8 @@ function proceedToNextTurn() {
         const nextPlayerId = getNextPlayerId();
         gameState.currentTurnPlayerId = nextPlayerId;
         gameState.turnPhase = 'BONUS_CHOICE';
+
+        const nextTurnStartLogs = [];
 
         if (nextPlayerId) {
             const nextPlayer = gameState.players[nextPlayerId];
@@ -295,21 +297,29 @@ function proceedToNextTurn() {
                     nextPlayer.timeBombTurns = 0;
                 } else if (!nextPlayer.bombDrawnThisTurn) {
                     battle.applyScoreChange(nextPlayer, 1000);
-                    expireLogs.push(`${nextPlayer.name} の「時限爆弾」保持ボーナス: +1,000点獲得！`);
+                    nextTurnStartLogs.push(`${nextPlayer.name} の「時限爆弾」保持ボーナス: +1,000点獲得！`);
                 }
             }
         }
 
-        let finalLog = expireLogs.length > 0 ? expireLogs.join('\n') + '\n' : '';
+        let finalLog = '';
+        // 先行ログ出力されていない場合のみ expireLogs を連結
+        if (!alreadyLoggedExpire && expireLogs.length > 0) {
+            finalLog += expireLogs.join('\n') + '\n';
+        }
+        if (nextTurnStartLogs.length > 0) {
+            finalLog += nextTurnStartLogs.join('\n') + '\n';
+        }
         finalLog += `${gameState.players[gameState.currentTurnPlayerId].name} のターンになりました。`;
+
         broadcastGameState(finalLog);
     }
 
     if (hasScoreChangeOnExpire) {
         broadcastGameState(expireLogs.join('\n'));
-        setTimeout(finalizeNextTurn, 650);
+        setTimeout(() => finalizeNextTurn(true), 650);
     } else {
-        finalizeNextTurn();
+        finalizeNextTurn(false);
     }
 }
 
