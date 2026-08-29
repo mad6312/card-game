@@ -45,52 +45,8 @@ function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState)
     broadcastGameState(`💥 ${defender.name} の「グレネード」カウンター発動！ 反撃対象: ${counterLogs.join(' / ')}`);
 }
 
-// グレネードスプラッシュ爆発
-function executeGrenadeSplash(gameState, primaryTargetId, casterId, broadcastGameState, isImmuneToRound1CardEffect) {
-    const primaryTarget = gameState.players[primaryTargetId];
-    const caster = gameState.players[casterId];
-    if (!primaryTarget || !caster) return;
-
-    const centerScore = primaryTarget.score;
-    const allPlayers = Object.values(gameState.players);
-    const victims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
-    const affectedLogs = [];
-
-    victims.forEach(victim => {
-        if (victim.id !== casterId && isImmuneToRound1CardEffect(victim.id, casterId)) {
-            affectedLogs.push(`${victim.name}(1巡目効果無効)`);
-            return;
-        }
-
-        const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
-        const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
-        const isImmune = victim.immunityCount && victim.immunityCount > 0;
-
-        if (isInvincible || isSteroid || isImmune) {
-            if (isInvincible && victim.invincibleSource === 'ARMOR') victim.armorRevealed = true;
-            if (isSteroid) victim.steroidRevealed = true;
-
-            let defMsg = '';
-            if (victim.defenseCard) {
-                victim.defenseCard = null;
-                defMsg = '防御カード破棄';
-            }
-            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
-            affectedLogs.push(`${victim.name}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
-        } else {
-            victim.hand = [];
-            victim.defenseCard = null;
-            applyScoreChange(victim, -5000);
-            victim.immunityCount = 2;
-            affectedLogs.push(`${victim.name}(-5,000点・手札防御全破棄・選択不可2T)`);
-        }
-    });
-
-    broadcastGameState(`💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`);
-}
-
-// グレネード単体攻撃
-function executeGrenadeSingleAttack(gameState, attackerId, targetId, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket) {
+// グレネード単体攻撃（放物線投擲＆同時大爆発カットイン完全同期）
+function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket) {
     const attacker = gameState.players[attackerId];
     const target = gameState.players[targetId];
     if (!attacker || !target) return;
@@ -109,18 +65,118 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, broadcastGa
     let logPrefix = `${attacker.name} が ${target.name} に「グレネード」で攻撃！ `;
     const isHit = Math.random() < baseHitRate;
 
-    if (!isHit) {
-        broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-        return;
+    // スプラッシュ被災者（ターゲットと±1,000点以内）の抽出
+    const centerScore = target.score;
+    const allPlayers = Object.values(gameState.players);
+    const splashOtherPlayers = allPlayers.filter(p => p.id !== attackerId && p.id !== target.id && Math.abs(p.score - centerScore) <= 1000);
+    const isSelfSplash = Math.abs(attacker.score - centerScore) <= 1000;
+
+    // 画面上の右側整列リストの構築（本ターゲット中央、スプラッシュ左右）
+    const defendersList = [];
+    if (splashOtherPlayers.length === 0) {
+        defendersList.push({ id: target.id, name: target.name, avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png' });
+    } else if (splashOtherPlayers.length === 1) {
+        defendersList.push({ id: target.id, name: target.name, avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: splashOtherPlayers[0].id, name: splashOtherPlayers[0].name, avatar: splashOtherPlayers[0].avatar ? `/images/avatars/${splashOtherPlayers[0].avatar}.png` : '/images/avatars/avatar_default.png' });
+    } else {
+        defendersList.push({ id: splashOtherPlayers[0].id, name: splashOtherPlayers[0].name, avatar: splashOtherPlayers[0].avatar ? `/images/avatars/${splashOtherPlayers[0].avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: target.id, name: target.name, avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: splashOtherPlayers[1].id, name: splashOtherPlayers[1].name, avatar: splashOtherPlayers[1].avatar ? `/images/avatars/${splashOtherPlayers[1].avatar}.png` : '/images/avatars/avatar_default.png' });
     }
 
-    let penetrateMsg = target.defenseCard ? ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)` : '';
-    broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 命中着弾！${penetrateMsg}`);
-    executeGrenadeSplash(gameState, target.id, attackerId, broadcastGameState, isImmuneToRound1CardEffect);
+    const victimsData = [];
+    const affectedLogs = [];
+
+    if (isHit) {
+        // 全被災者（直撃者＋スプラッシュ＋自分）の判定処理
+        const allVictims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
+
+        allVictims.forEach(victim => {
+            if (victim.id !== attackerId && isImmuneToRound1CardEffect(victim.id, attackerId)) {
+                affectedLogs.push(`${victim.name}(1巡目効果無効)`);
+                return;
+            }
+
+            const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
+            const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
+            const isImmune = victim.immunityCount && victim.immunityCount > 0;
+
+            if (isInvincible || isSteroid || isImmune) {
+                if (isInvincible && victim.invincibleSource === 'ARMOR') victim.armorRevealed = true;
+                if (isSteroid) victim.steroidRevealed = true;
+
+                let defMsg = '';
+                const hadDef = !!victim.defenseCard;
+                if (victim.defenseCard) {
+                    victim.defenseCard = null;
+                    defMsg = '防御カード破棄';
+                }
+                const stateName = isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！');
+                affectedLogs.push(`${victim.name}(${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
+
+                victimsData.push({
+                    id: victim.id,
+                    result: 'PROTECTED',
+                    protectText: stateName,
+                    hasDefenseCard: hadDef
+                });
+            } else {
+                let hadDef = false;
+                let defImg = null;
+                if (victim.defenseCard) {
+                    hadDef = true;
+                    defImg = victim.defenseCard.card.image || '/images/wood_shield.png';
+                }
+                victim.hand = [];
+                victim.defenseCard = null;
+                applyScoreChange(victim, -5000);
+                victim.immunityCount = 2;
+                affectedLogs.push(`${victim.name}(-5,000点・手札防御全破棄・選択不可2T)`);
+
+                victimsData.push({
+                    id: victim.id,
+                    result: (victim.id === target.id && hadDef) ? 'BLOCK_PIERCED' : 'HIT',
+                    defCardImage: defImg
+                });
+            }
+        });
+    }
+
+    if (io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: attacker.id,
+                name: attacker.name,
+                avatar: attacker.avatar ? `/images/avatars/${attacker.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'grenade',
+                name: 'グレネード',
+                image: '/images/grenade.png'
+            },
+            defenders: defendersList,
+            grenadeAction: {
+                steps: [{
+                    primaryTargetId: target.id,
+                    isMiss: !isHit,
+                    victims: victimsData
+                }]
+            }
+        });
+    }
+
+    setTimeout(() => {
+        if (!isHit) {
+            broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
+        } else {
+            let penetrateMsg = target.defenseCard ? ` (相手の防御カードを貫通！)` : '';
+            broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 命中着弾！${penetrateMsg}\n💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`);
+        }
+    }, isHit ? 1600 : 1200);
 }
 
-// グレネードグループ攻撃
-function executeGrenadeGroupAttack(gameState, attackerId, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1) {
+// グレネードグループ攻撃（下位全員：順次投擲＆同時大爆発カットイン完全同期）
+function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
 
@@ -149,7 +205,7 @@ function executeGrenadeGroupAttack(gameState, attackerId, broadcastGameState, is
     const attackQueue = [];
 
     sortedDiffs.forEach(diff => {
-        const group = grouped[diff];
+        const group = [...grouped[diff]];
         for (let i = group.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [group[i], group[j]] = [group[j], group[i]];
@@ -157,48 +213,135 @@ function executeGrenadeGroupAttack(gameState, attackerId, broadcastGameState, is
         attackQueue.push(...group);
     });
 
-    function processQueue(index) {
-        if (index >= attackQueue.length) {
-            broadcastGameState(`${attacker.name} の「グレネード」攻撃は誰にも命中せず終了しました。`);
-            return;
-        }
+    // 攻撃順（キュー順）通りのディフェンダー配列
+    const defendersList = attackQueue.map(p => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar ? `/images/avatars/${p.avatar}.png` : '/images/avatars/avatar_default.png'
+    }));
 
-        const target = gameState.players[attackQueue[index].id];
-        if (!target) {
-            processQueue(index + 1);
-            return;
-        }
+    let baseHitRate = 0.8;
+    if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.4;
 
-        if (skipIfImmuneToRound1CardEffect(target, attacker, '「グレネード」攻撃')) {
-            processQueue(index + 1);
-            return;
-        }
+    const steps = [];
+    let finalLog = '';
+    let stopped = false;
 
-        let baseHitRate = 0.8;
-        if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.4;
+    for (let i = 0; i < attackQueue.length; i++) {
+        if (stopped) break;
 
-        const ratePercent = Math.round(baseHitRate * 100);
-        let logPrefix = `${attacker.name} の「グレネード」攻撃 (対象: ${target.name})！ `;
+        const target = gameState.players[attackQueue[i].id];
+        if (!target) continue;
 
         const isHit = Math.random() < baseHitRate;
 
         if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-            setTimeout(() => processQueue(index + 1), 500);
-            return;
+            steps.push({
+                primaryTargetId: target.id,
+                isMiss: true,
+                victims: []
+            });
+            continue;
         }
 
-        let penetrateMsg = target.defenseCard ? ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)` : '';
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中着弾！${penetrateMsg}`);
-        executeGrenadeSplash(gameState, target.id, attackerId, broadcastGameState, isImmuneToRound1CardEffect);
+        // 命中・爆発確定
+        const centerScore = target.score;
+        const allVictims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
+        const victimsData = [];
+        const affectedLogs = [];
+
+        allVictims.forEach(victim => {
+            if (victim.id !== attackerId && isImmuneToRound1CardEffect(victim.id, attackerId)) {
+                affectedLogs.push(`${victim.name}(1巡目効果無効)`);
+                return;
+            }
+
+            const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
+            const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
+            const isImmune = victim.immunityCount && victim.immunityCount > 0;
+
+            if (isInvincible || isSteroid || isImmune) {
+                if (isInvincible && victim.invincibleSource === 'ARMOR') victim.armorRevealed = true;
+                if (isSteroid) victim.steroidRevealed = true;
+
+                let defMsg = '';
+                const hadDef = !!victim.defenseCard;
+                if (victim.defenseCard) {
+                    victim.defenseCard = null;
+                    defMsg = '防御カード破棄';
+                }
+                const stateName = isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！');
+                affectedLogs.push(`${victim.name}(${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
+
+                victimsData.push({
+                    id: victim.id,
+                    result: 'PROTECTED',
+                    protectText: stateName,
+                    hasDefenseCard: hadDef
+                });
+            } else {
+                let hadDef = false;
+                let defImg = null;
+                if (victim.defenseCard) {
+                    hadDef = true;
+                    defImg = victim.defenseCard.card.image || '/images/wood_shield.png';
+                }
+                victim.hand = [];
+                victim.defenseCard = null;
+                applyScoreChange(victim, -5000);
+                victim.immunityCount = 2;
+                affectedLogs.push(`${victim.name}(-5,000点・手札防御全破棄・選択不可2T)`);
+
+                victimsData.push({
+                    id: victim.id,
+                    result: (victim.id === target.id && hadDef) ? 'BLOCK_PIERCED' : 'HIT',
+                    defCardImage: defImg
+                });
+            }
+        });
+
+        steps.push({
+            primaryTargetId: target.id,
+            isMiss: false,
+            victims: victimsData
+        });
+
+        let penetrateMsg = target.defenseCard ? ` (相手の防御カードを貫通！)` : '';
+        finalLog = `${attacker.name} の「グレネード」攻撃 (対象: ${target.name})！ (命中率:${Math.round(baseHitRate * 100)}%) 命中着弾！${penetrateMsg}\n💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`;
+        stopped = true;
+        break;
     }
 
-    processQueue(0);
+    if (!finalLog) {
+        finalLog = `${attacker.name} の「グレネード」攻撃は誰にも命中せず終了しました。`;
+    }
+
+    if (io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: attacker.id,
+                name: attacker.name,
+                avatar: attacker.avatar ? `/images/avatars/${attacker.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'grenade',
+                name: 'グレネード',
+                image: '/images/grenade.png'
+            },
+            defenders: defendersList,
+            grenadeAction: {
+                steps: steps
+            }
+        });
+    }
+
+    const animDuration = Math.max(1200, steps.length * 600 + 1000);
+    setTimeout(() => {
+        broadcastGameState(finalLog);
+    }, animDuration);
 }
 
-/**
- * ショットガン（単体・グループ：射撃＆貫通カットイン完全同期）
- */
+// ショットガン（単体・グループ：射撃＆貫通カットイン完全同期）
 function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
@@ -229,7 +372,7 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
         const attackQueue = [];
 
         sortedDiffs.forEach(diff => {
-            const group = grouped[diff];
+            const group = [...grouped[diff]];
             for (let i = group.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [group[i], group[j]] = [group[j], group[i]];
@@ -237,7 +380,6 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
             attackQueue.push(...group);
         });
 
-        // 攻撃順（キュー順）通りのディフェンダー配列
         const defendersList = attackQueue.map(p => ({
             id: p.id,
             name: p.name,
@@ -401,7 +543,6 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
 
 module.exports = {
     executeGrenadeDefenseCounter,
-    executeGrenadeSplash,
     executeGrenadeSingleAttack,
     executeGrenadeGroupAttack,
     executeShotgunAttack

@@ -427,6 +427,17 @@ server.js OR index.html
 「修正後、既存の仕様と矛盾がないか確認してください。」
 「このルールとカードデータで、先攻と後攻を10,000回ランダム対戦させて勝率を集計するPythonコードを書いて」
 GAME_SPEC.md
+Ctrl + Shift + P （Macは Cmd + Shift + P）でコマンドパレットを開きます。
+「Preferences: Open Workspace Settings (JSON)」と入力して選択します。
+以下のように "files.exclude" 内に隠したいパスと true を記述します。
+JSON
+{
+  "files.exclude": {
+    "**/old_backup": true,
+    "**/.git": true,
+    "**/*.log": true
+  }
+}
 
 あなたは優秀なプログラマーです。指示されたプログラムの修正要望に対し、初心者でもコピペでそのまま使えるよう、省略せずに修正後のコード全体を出力してください。また、常に快適にコピペできるようにするため、修正対象のファイルごとにメッセージを分けて1ファイルずつ確実に出力してください。
 

@@ -78,6 +78,7 @@
 }
 
 .cutin-attacker-info {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -116,7 +117,7 @@
     background: #000;
 }
 
-/* ショットガン専用：マズルフラッシュ（銃口閃光） */
+/* ショットガン専用：マズルフラッシュ */
 .cutin-muzzle-flash {
     position: absolute;
     right: -25px;
@@ -152,7 +153,7 @@
     }
 }
 
-/* ショットガン専用：銃弾トレーサー（高速弾丸光線） */
+/* ショットガン専用：銃弾トレーサー */
 .cutin-bullet-tracer {
     position: absolute;
     top: 50%;
@@ -170,6 +171,60 @@
 
 .cutin-bullet-tracer.active {
     opacity: 1;
+}
+
+/* グレネード専用：手榴弾投擲（白背景自動透過ブレンド） */
+.cutin-grenade-bomb {
+    position: absolute;
+    left: 220px;
+    top: 50%;
+    width: 55px;
+    height: 80px;
+    object-fit: contain;
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    /* 白背景や市松模様の明部を自然に透過合成 */
+    filter: drop-shadow(0 0 12px rgba(243, 156, 18, 0.9)) contrast(1.15) brightness(1.1);
+}
+
+.cutin-grenade-bomb.active {
+    opacity: 1;
+}
+
+/* グレネード専用：大爆発サークル＆ショックウェーブ */
+.cutin-explosion-blast {
+    position: absolute;
+    transform: translate(-50%, -50%) scale(0);
+    width: 320px;
+    height: 320px;
+    background: radial-gradient(circle, #fff 0%, #ff4757 30%, #f39c12 60%, rgba(231, 76, 60, 0.4) 80%, transparent 100%);
+    border-radius: 50%;
+    z-index: 45;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cutin-explosion-blast.explode {
+    animation: explosionBlastAnim 0.65s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes explosionBlastAnim {
+    0% {
+        transform: translate(-50%, -50%) scale(0.1);
+        opacity: 1;
+    }
+
+    40% {
+        transform: translate(-50%, -50%) scale(1.4);
+        opacity: 0.95;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(2.0);
+        opacity: 0;
+    }
 }
 
 /* 射撃時の攻撃側リコイル反動 */
@@ -361,7 +416,7 @@
 
 /* 挙動アニメーションクラス */
 
-/* 1. 回避（上方向へサッと浮遊＋半透明化） */
+/* 1. 回避 */
 .dodge-action {
     animation: dodgeAnim 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
@@ -383,7 +438,7 @@
     }
 }
 
-/* 2. 吹き飛び（右斜め上へ回転しながら画面外へ） */
+/* 2. 通常吹き飛び（右斜め上へ） */
 .blown-away-action {
     animation: blowAwayAnim 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
@@ -405,7 +460,95 @@
     }
 }
 
-/* 3. 攻撃側弾かれノックバック（防御・無敵激突時） */
+/* 3. 扇状吹き飛び：左斜め上へ（左側配置ターゲット用） */
+.blow-left-up {
+    animation: blowLeftUpAnim 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes blowLeftUpAnim {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+
+    30% {
+        transform: translate(-30px, -30px) rotate(-15deg) scale(1.1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-350px, -220px) rotate(-80deg) scale(0.4);
+        opacity: 0;
+    }
+}
+
+/* 4. 扇状吹き飛び：真上へ（中央配置ターゲット用） */
+.blow-straight-up {
+    animation: blowStraightUpAnim 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes blowStraightUpAnim {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+
+    30% {
+        transform: translate(0, -40px) rotate(0deg) scale(1.15);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(0, -380px) rotate(35deg) scale(0.35);
+        opacity: 0;
+    }
+}
+
+/* 5. 扇状吹き飛び：右斜め上へ（右側配置ターゲット用） */
+.blow-right-up {
+    animation: blowRightUpAnim 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes blowRightUpAnim {
+    0% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+
+    30% {
+        transform: translate(35px, -30px) rotate(15deg) scale(1.1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(380px, -220px) rotate(80deg) scale(0.4);
+        opacity: 0;
+    }
+}
+
+/* 6. 攻撃側自身の巻き込まれ吹き飛び（左外へ） */
+.blow-self-left {
+    animation: blowSelfLeftAnim 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes blowSelfLeftAnim {
+    0% {
+        transform: translateY(-50%) translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+    }
+
+    30% {
+        transform: translateY(-50%) translate(-30px, -20px) rotate(-10deg) scale(1.1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateY(-50%) translate(-380px, -150px) rotate(-60deg) scale(0.35);
+        opacity: 0;
+    }
+}
+
+/* 7. 攻撃側弾かれノックバック */
 .attacker-knockback {
     animation: knockbackAnim 0.35s ease-out forwards;
 }

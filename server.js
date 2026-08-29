@@ -154,7 +154,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
             return sortedByNumber[0].id;
         }
     }
@@ -697,9 +697,9 @@ io.on('connection', (socket) => {
             } else if (card.id === 'grenade') {
                 player.hand.splice(cardIndex, 1);
                 if (targetPlayerId === 'ALL_LOWER') {
-                    battle.executeGrenadeGroupAttack(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                    battle.executeGrenadeGroupAttack(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
                 } else {
-                    battle.executeGrenadeSingleAttack(gameState, socket.id, targetPlayerId, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket);
+                    battle.executeGrenadeSingleAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket);
                 }
             } else if (card.id === 'wood_shield_set' && (targetPlayerId === 'EQUAL_OR_HIGHER' || targetPlayerId === 'LOWER')) {
                 let cardObj = player.hand[cardIndex];
@@ -887,9 +887,9 @@ io.on('connection', (socket) => {
         if (card.id === 'grenade') {
             player.defenseCard = null;
             if (targetPlayerId === 'ALL_LOWER') {
-                battle.executeGrenadeGroupAttack(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
+                battle.executeGrenadeGroupAttack(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1);
             } else {
-                battle.executeGrenadeSingleAttack(gameState, socket.id, targetPlayerId, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket);
+                battle.executeGrenadeSingleAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, isImmuneToRound1CardEffect, skipIfImmuneToRound1CardEffect, socket);
             }
             return;
         }

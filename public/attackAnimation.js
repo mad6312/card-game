@@ -1,6 +1,6 @@
 /**
  * 攻撃カットインアニメーション制御モジュール (attackAnimation.js)
- * 単発攻撃および「木の盾セット」等の複数回攻撃（連撃ループ）の演出をシームレスに再生します。
+ * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲＆同時大爆発（グレネード）に対応
  */
 
 (function (window) {
@@ -17,7 +17,7 @@
 
     /**
      * 攻撃アニメーションのメイン実行関数
-     * @param {Object} data 演出定義データ (単発 results または複数 rounds 対応)
+     * @param {Object} data 演出定義データ
      * @param {Function} onComplete アニメーション完了時コールバック
      */
     function playAttackCutin(data, onComplete) {
@@ -31,21 +31,23 @@
         const card = data.card;
         const defenders = data.defenders || [];
         const isGunAttack = (card.id === 'shotgun');
+        const isGrenadeAttack = (card.id === 'grenade');
 
-        // 単発データ形式（results）を rounds 形式へ正規化
         const rounds = data.rounds || (data.results ? [{ roundNumber: 1, results: data.results }] : []);
 
-        if (rounds.length === 0) {
+        if (rounds.length === 0 && !data.grenadeAction) {
             if (onComplete) onComplete();
             return;
         }
 
-        // 1. ステージ初期化
+        // 1. ステージ初期化（手榴弾画像のフォールバック保護付き）
         stage.innerHTML = `
             <div class="cutin-attacker-unit" id="cutin-attacker">
                 <div class="cutin-attacker-info">
                     <img src="${attacker.avatar || '/images/avatars/avatar_default.png'}" class="cutin-avatar-attacker" alt="${attacker.name}" onerror="this.src='/images/avatars/avatar_default.png'">
                     <span class="cutin-player-name">${attacker.name}</span>
+                    <div class="cutin-result-badge" id="cutin-badge-attacker"></div>
+                    <div class="cutin-invincible-aura" id="cutin-aura-attacker"></div>
                 </div>
                 <div style="position:relative; display:inline-block;">
                     <img src="${card.image || '/images/wood_shield.png'}" class="cutin-card-img-attacker" alt="${card.name}">
@@ -53,6 +55,8 @@
                 </div>
             </div>
             ${isGunAttack ? '<div class="cutin-bullet-tracer" id="cutin-bullet"></div>' : ''}
+            ${isGrenadeAttack ? '<img src="/images/grenade_bomb.png" class="cutin-grenade-bomb" id="cutin-grenade" alt="" onerror="if(this.src.indexOf(\'PNG\')===-1){this.src=\'/images/grenade_bomb.PNG\';}else{this.src=\'/images/grenade.png\';}">' : ''}
+            ${isGrenadeAttack ? '<div class="cutin-explosion-blast" id="cutin-explosion"></div>' : ''}
             <div class="cutin-defenders-group" id="cutin-defenders-group"></div>
         `;
 
@@ -61,10 +65,11 @@
         const aliveDefenderIds = new Set(defenders.map(d => d.id));
 
         // 2. ディフェンダーユニットを横並び生成
-        defenders.forEach((def) => {
+        defenders.forEach((def, idx) => {
             const unit = document.createElement('div');
             unit.className = 'cutin-defender-unit';
             unit.id = `cutin-def-${def.id}`;
+            unit.setAttribute('data-index', idx);
 
             unit.innerHTML = `
                 <div class="cutin-result-badge" id="cutin-badge-${def.id}"></div>
@@ -81,11 +86,172 @@
         const attackerEl = document.getElementById('cutin-attacker');
         const muzzleFlashEl = document.getElementById('cutin-muzzle-flash');
         const bulletEl = document.getElementById('cutin-bullet');
+        const grenadeEl = document.getElementById('cutin-grenade');
+        const explosionEl = document.getElementById('cutin-explosion');
 
-        // 3. レイヤーを表示
         layer.classList.add('active');
 
-        // 4. ラウンド制連撃ループの実行制御
+        // ==========================================
+        // 【グレネード専用：手榴弾投擲＆同時大爆発演出】
+        // ==========================================
+        if (isGrenadeAttack && data.grenadeAction) {
+            const action = data.grenadeAction;
+            const steps = action.steps || [];
+            let currentStepIdx = 0;
+
+            function runNextGrenadeStep() {
+                if (currentStepIdx >= steps.length) {
+                    finishAnimation();
+                    return;
+                }
+
+                const currentStep = steps[currentStepIdx];
+                const primaryTargetId = currentStep.primaryTargetId;
+                const primaryUnit = defenderUnitMap[primaryTargetId];
+
+                if (!primaryUnit) {
+                    currentStepIdx++;
+                    runNextGrenadeStep();
+                    return;
+                }
+
+                const stageRect = stage.getBoundingClientRect();
+                const defendersGroupRect = defendersGroup.getBoundingClientRect();
+
+                const targetCenterX = (defendersGroupRect.left - stageRect.left) + (defendersGroupRect.width / 2);
+                const targetCenterY = (defendersGroupRect.top - stageRect.top) + (defendersGroupRect.height / 2);
+
+                if (grenadeEl) {
+                    grenadeEl.classList.add('active');
+                    grenadeEl.style.left = '220px';
+                    grenadeEl.style.top = '50%';
+                    grenadeEl.style.transform = 'translateY(-50%) rotate(0deg)';
+
+                    grenadeEl.style.transition = 'left 0.45s linear, top 0.45s cubic-bezier(0.2, 0.8, 0.4, 1), transform 0.45s linear';
+                    void grenadeEl.offsetWidth;
+                    grenadeEl.style.left = `${targetCenterX - 25}px`;
+                    grenadeEl.style.top = `${targetCenterY - 30}px`;
+                    grenadeEl.style.transform = 'translateY(-50%) rotate(720deg) scale(0.9)';
+                }
+
+                setTimeout(() => {
+                    if (currentStep.isMiss) {
+                        const primaryBadge = document.getElementById(`cutin-badge-${primaryTargetId}`);
+                        if (primaryBadge) {
+                            primaryBadge.innerText = '回避！';
+                            primaryBadge.className = 'cutin-result-badge badge-dodge show';
+                        }
+                        primaryUnit.classList.add('dodge-action');
+
+                        if (grenadeEl) {
+                            grenadeEl.style.transition = 'top 0.25s ease-out, transform 0.25s ease-out';
+                            grenadeEl.style.top = `${targetCenterY + 40}px`;
+                            grenadeEl.style.transform = 'translateY(-50%) rotate(900deg) scale(0.6)';
+                        }
+
+                        setTimeout(() => {
+                            currentStepIdx++;
+                            runNextGrenadeStep();
+                        }, 550);
+
+                    } else {
+                        if (grenadeEl) grenadeEl.classList.remove('active');
+
+                        if (explosionEl) {
+                            explosionEl.style.left = `${targetCenterX}px`;
+                            explosionEl.style.top = `${targetCenterY}px`;
+                            explosionEl.classList.add('explode');
+                        }
+
+                        if (flash) {
+                            flash.classList.remove('flash');
+                            void flash.offsetWidth;
+                            flash.classList.add('flash');
+                        }
+
+                        const victims = currentStep.victims || [];
+                        const totalDefs = defenders.length;
+
+                        victims.forEach((v) => {
+                            if (v.id === attacker.id) {
+                                const selfBadge = document.getElementById('cutin-badge-attacker');
+                                const selfAura = document.getElementById('cutin-aura-attacker');
+
+                                if (v.result === 'PROTECTED') {
+                                    if (selfAura) selfAura.classList.add('show');
+                                    if (selfBadge) {
+                                        selfBadge.innerText = v.protectText || '無敵！';
+                                        selfBadge.className = 'cutin-result-badge badge-invincible show';
+                                    }
+                                } else {
+                                    if (selfBadge) {
+                                        selfBadge.innerText = '命中！';
+                                        selfBadge.className = 'cutin-result-badge badge-hit show';
+                                    }
+                                    attackerEl.classList.add('blow-self-left');
+                                }
+                                return;
+                            }
+
+                            const vUnit = defenderUnitMap[v.id];
+                            if (!vUnit) return;
+
+                            const vBadge = document.getElementById(`cutin-badge-${v.id}`);
+                            const vCard = document.getElementById(`cutin-def-card-${v.id}`);
+                            const vAura = document.getElementById(`cutin-aura-${v.id}`);
+                            const defIdx = Number(vUnit.getAttribute('data-index') || 0);
+
+                            let blowClass = 'blow-straight-up';
+                            if (totalDefs === 1) {
+                                blowClass = 'blow-straight-up';
+                            } else if (totalDefs === 2) {
+                                blowClass = (defIdx === 0) ? 'blow-left-up' : 'blow-right-up';
+                            } else {
+                                if (defIdx === 0) blowClass = 'blow-left-up';
+                                else if (defIdx === totalDefs - 1) blowClass = 'blow-right-up';
+                                else blowClass = 'blow-straight-up';
+                            }
+
+                            if (v.result === 'PROTECTED') {
+                                if (vCard && v.hasDefenseCard) {
+                                    vCard.classList.add('broken');
+                                }
+                                if (vAura) vAura.classList.add('show');
+                                if (vBadge) {
+                                    vBadge.innerText = v.protectText || '無敵！';
+                                    vBadge.className = 'cutin-result-badge badge-invincible show';
+                                }
+                            } else if (v.result === 'BLOCK_PIERCED') {
+                                if (vCard) {
+                                    if (v.defCardImage) vCard.src = v.defCardImage;
+                                    vCard.classList.add('broken');
+                                }
+                                if (vBadge) {
+                                    vBadge.innerText = '貫通！';
+                                    vBadge.className = 'cutin-result-badge badge-pierce show';
+                                }
+                                vUnit.classList.add(blowClass);
+                            } else {
+                                if (vBadge) {
+                                    vBadge.innerText = '命中！';
+                                    vBadge.className = 'cutin-result-badge badge-hit show';
+                                }
+                                vUnit.classList.add(blowClass);
+                            }
+                        });
+
+                        setTimeout(finishAnimation, 950);
+                    }
+                }, 460);
+            }
+
+            setTimeout(runNextGrenadeStep, 350);
+            return;
+        }
+
+        // ==========================================
+        // 【通常突進型・射撃型の連撃ループ制御】
+        // ==========================================
         let currentRoundIndex = 0;
 
         function runNextRound() {
@@ -98,14 +264,12 @@
             const roundResults = currentRound.results || [];
             let stepIndex = 0;
 
-            // 攻撃側を初期位置へリセット（連撃インターバル後）
             attackerEl.style.transition = 'transform 0.22s ease-out';
             attackerEl.style.transform = 'translate(0, -50%)';
             attackerEl.classList.remove('attacker-knockback', 'recoil-action');
 
             function runNextStepInRound() {
                 if (stepIndex >= roundResults.length) {
-                    // 当該ラウンド終了 ➔ 次のラウンドへ
                     currentRoundIndex++;
                     setTimeout(runNextRound, 450);
                     return;
@@ -115,7 +279,6 @@
                 const targetDef = defenders.find(d => d.id === step.targetId);
                 const defUnit = defenderUnitMap[step.targetId];
 
-                // すでに吹き飛んで離脱済みの場合はスキップ
                 if (!targetDef || !defUnit || !aliveDefenderIds.has(step.targetId)) {
                     stepIndex++;
                     runNextStepInRound();
@@ -126,16 +289,12 @@
                 const defCardEl = document.getElementById(`cutin-def-card-${step.targetId}`);
                 const auraEl = document.getElementById(`cutin-aura-${step.targetId}`);
 
-                // 前回のバッジ表示をリセット
                 if (badgeEl) badgeEl.className = 'cutin-result-badge';
 
                 const stageRect = stage.getBoundingClientRect();
                 const defRect = defUnit.getBoundingClientRect();
 
                 if (isGunAttack) {
-                    // ==========================================
-                    // 【ショットガン専用：射撃・弾道アニメーション】
-                    // ==========================================
                     const startX = 240;
                     const targetImpactX = (defRect.left - stageRect.left) + 20;
 
@@ -225,15 +384,11 @@
                                 badgeEl.className = 'cutin-result-badge badge-invincible show';
                             }
 
-                            // 無敵/ステロイド時は即時連撃終了
                             setTimeout(finishAnimation, 850);
                         }
                     }, 220);
 
                 } else {
-                    // ==========================================
-                    // 【突進型アニメーション（木の盾・木の盾セット・青銅の盾・木の剣）】
-                    // ==========================================
                     const targetX = (defRect.left - stageRect.left) - 150;
 
                     attackerEl.style.transition = 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1)';
@@ -266,7 +421,6 @@
                             defUnit.classList.add('blown-away-action');
                             aliveDefenderIds.delete(step.targetId);
 
-                            // 当該撃終了 ➔ 次のラウンド（撃）へ
                             setTimeout(() => {
                                 currentRoundIndex++;
                                 runNextRound();
@@ -282,7 +436,6 @@
                             }
                             attackerEl.classList.add('attacker-knockback');
 
-                            // 防御カード無効化時も、残存回数があれば次の撃へ継続
                             setTimeout(() => {
                                 currentRoundIndex++;
                                 runNextRound();
@@ -297,7 +450,6 @@
                             }
                             attackerEl.classList.add('attacker-knockback');
 
-                            // 無敵/ステロイドで弾かれた場合は即座に連撃中断・終了
                             setTimeout(finishAnimation, 850);
                         }
                     }, 360);
@@ -317,11 +469,9 @@
             }, 500);
         }
 
-        // 開幕0.35秒待機してから第1撃開始
         setTimeout(runNextRound, 350);
     }
 
-    // グローバル公開
     window.AttackAnimation = {
         play: playAttackCutin
     };
