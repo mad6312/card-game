@@ -145,10 +145,20 @@ socket.on('playAttackCutin', (data) => {
             isAttackCutinPlaying = false;
             if (pendingLPScoreQueue.length > 0) {
                 setTimeout(() => {
+                    // 同一プレイヤーの重複タスクをマージして整理
+                    const mergedTasks = {};
                     while (pendingLPScoreQueue.length > 0) {
                         const task = pendingLPScoreQueue.shift();
-                        triggerLPScoreAnimation(task.id, task.startVal, task.endVal, task.diff);
+                        if (!mergedTasks[task.id]) {
+                            mergedTasks[task.id] = { ...task };
+                        } else {
+                            mergedTasks[task.id].endVal = task.endVal;
+                            mergedTasks[task.id].diff += task.diff;
+                        }
                     }
+                    Object.values(mergedTasks).forEach(t => {
+                        triggerLPScoreAnimation(t.id, t.startVal, t.endVal, t.diff);
+                    });
                 }, 200);
             }
         });
@@ -335,7 +345,6 @@ socket.on('syncGameState', (data) => {
             if (prevTargetScore !== currentTargetScore) {
                 const startVal = (typeof currentRenderedScores[p.id] === 'number') ? currentRenderedScores[p.id] : prevTargetScore;
 
-                // 変動中はアニメーション開始まで前回の表示値を維持
                 currentRenderedScores[p.id] = startVal;
 
                 pendingScoreChanges.push({
@@ -354,7 +363,7 @@ socket.on('syncGameState', (data) => {
         });
     }
 
-    // 2. 盤面DOMの再構築（現在の維持値で安全に描画）
+    // 2. 盤面DOMの再構築
     updatePlayersUI(data.players, data.currentTurnPlayerId);
     updateTurnControls(data);
     renderDebugScorePanel(data.players);
@@ -371,11 +380,17 @@ socket.on('syncGameState', (data) => {
     }
 });
 
-/* LP風得点変動アニメーション制御（視認性向上・完走保護版） */
+/* LP風得点変動アニメーション制御（視認性向上・重複完全防止版） */
 function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     if (activeScoreRollAnimators[playerId]) {
         cancelAnimationFrame(activeScoreRollAnimators[playerId]);
         delete activeScoreRollAnimators[playerId];
+    }
+
+    // 既存のポップアップDOMがあれば完全に即時破棄
+    const existingPopup = document.getElementById(`score-popup-${playerId}`);
+    if (existingPopup && existingPopup.parentNode) {
+        existingPopup.remove();
     }
 
     const isPlus = diffVal > 0;
@@ -428,7 +443,6 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     activeScoreRollAnimators[playerId] = requestAnimationFrame(step);
 }
 
-// ポップアップ要素をスコアコンテナへ安全に付着・維持する補助関数
 function attachScorePopup(playerId) {
     const popupInfo = activeScorePopups[playerId];
     if (!popupInfo || Date.now() > popupInfo.expiresAt) return;
@@ -491,7 +505,6 @@ function setDebugScoreDirect(targetPlayerId) {
     }
 }
 
-/* プレイヤーUI描画（最新値・アニメーション保持対応） */
 function updatePlayersUI(players, currentTurnPlayerId) {
     const sorted = Object.values(players).sort((a, b) => b.score - a.score);
     const playerList = Object.values(players).sort((a, b) => a.number - b.number);
@@ -664,7 +677,6 @@ function updatePlayersUI(players, currentTurnPlayerId) {
             badgeRowContainerHtml = `<div class="status-badges-row">${statusBadgesHtml}</div>`;
         }
 
-        // 表示値の決定（ロール中・保留中であれば現在地、なければ最新点数）
         const scoreDisplayVal = (typeof currentRenderedScores[p.id] === 'number') ? currentRenderedScores[p.id] : p.score;
 
         box.innerHTML = `
@@ -691,8 +703,6 @@ function updatePlayersUI(players, currentTurnPlayerId) {
         `;
 
         targetContainer.appendChild(box);
-
-        // 再描画直後に、進行中のポップアップがあれば再付着して維持
         attachScorePopup(p.id);
     });
 }
@@ -1232,7 +1242,7 @@ function calculateWoodSwordSetGroupHitRates(candidates, myScore, attackCount = 1
     return { groupStr: playerNames.join(','), rateDetailStr: rateDetails.join(', ') };
 }
 
-/* 命中率表示更新ロジック */
+/* 命中率表示更新ロジック（攻撃回数リアルタイム反映） */
 function updateHitRateDisplay(selectEl) {
     if (!selectEl) return;
     const displayEl = document.getElementById('hit-rate-info');
@@ -1317,7 +1327,8 @@ function updateHitRateDisplay(selectEl) {
                 if (lowerCandidates.length > 0) {
                     let res;
                     if (cardId === 'bronze_shield_set') {
-                        res = calculateBronzeShieldSetGroupHitRates(lowerCandidates, myScore, 1, isDarkness);
+                        // 修正：攻撃回数(attackCount)を渡して正しい最終命中率を算出
+                        res = calculateBronzeShieldSetGroupHitRates(lowerCandidates, myScore, attackCount, isDarkness);
                     } else {
                         res = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);
                     }
@@ -1503,7 +1514,6 @@ function openDropCardModal(source, instanceId) {
     const hasDefense = !!myPlayer.defenseCard;
     let html = '';
 
-    // 排他制御状態のチェック
     const hasUsedOban = myPlayer.playedObanThisTurn;
     const hasUsedDarkMatter = myPlayer.playedDarkMatterThisTurn;
     const hasUsedOtherCard = myPlayer.playedHandCardThisTurn && !hasUsedOban && !hasUsedDarkMatter;

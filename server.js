@@ -154,7 +154,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b);
             return sortedByNumber[0].id;
         }
     }
@@ -678,24 +678,20 @@ io.on('connection', (socket) => {
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
                 if (targetPlayerId === 'CLOSEST_HIGHER') {
-                    battle.executeBronzeShieldSetAttack(gameState, socket.id, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                        setTimeout(() => {
-                            if (cardObj.usesLeft <= 0) {
-                                const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) player.hand.splice(idx, 1);
-                            }
-                            broadcastGameState();
-                        }, 550);
+                    battle.executeBronzeShieldSetAttack(gameState, socket.id, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                        if (cardObj.usesLeft <= 0) {
+                            const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
+                            if (idx !== -1) player.hand.splice(idx, 1);
+                        }
+                        broadcastGameState(finalLog || '');
                     });
                 } else if (targetPlayerId === 'LOWER') {
-                    battle.executeBronzeShieldSetGroupAttack(gameState, socket.id, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                        setTimeout(() => {
-                            if (cardObj.usesLeft <= 0) {
-                                const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) player.hand.splice(idx, 1);
-                            }
-                            broadcastGameState();
-                        }, 550);
+                    battle.executeBronzeShieldSetGroupAttack(gameState, socket.id, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                        if (cardObj.usesLeft <= 0) {
+                            const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
+                            if (idx !== -1) player.hand.splice(idx, 1);
+                        }
+                        broadcastGameState(finalLog || '');
                     });
                 }
             } else if (card.id === 'grenade') {
@@ -711,14 +707,12 @@ io.on('connection', (socket) => {
                 const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
-                battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                    setTimeout(() => {
-                        if (cardObj.usesLeft <= 0) {
-                            const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                            if (idx !== -1) player.hand.splice(idx, 1);
-                        }
-                        broadcastGameState();
-                    }, 550);
+                battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                    if (cardObj.usesLeft <= 0) {
+                        const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
+                        if (idx !== -1) player.hand.splice(idx, 1);
+                    }
+                    broadcastGameState(finalLog || '');
                 });
             } else if (card.id === 'wood_sword_set') {
                 let cardObj = player.hand[cardIndex];
@@ -727,14 +721,12 @@ io.on('connection', (socket) => {
                 const maxAttacks = Math.min(requestedCount, cardObj.usesLeft);
 
                 if (targetPlayerId === 'ALL_LOWER') {
-                    battle.executeWoodSwordSetGroupAttack(gameState, socket.id, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                        setTimeout(() => {
-                            if (cardObj.usesLeft <= 0) {
-                                const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) player.hand.splice(idx, 1);
-                            }
-                            broadcastGameState();
-                        }, 550);
+                    battle.executeWoodSwordSetGroupAttack(gameState, socket.id, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                        if (cardObj.usesLeft <= 0) {
+                            const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
+                            if (idx !== -1) player.hand.splice(idx, 1);
+                        }
+                        broadcastGameState(finalLog || '');
                     });
                 } else {
                     const target = gameState.players[targetPlayerId];
@@ -748,14 +740,12 @@ io.on('connection', (socket) => {
                     }
                     if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
-                    battle.executeWoodSwordSetAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, () => {
-                        setTimeout(() => {
-                            if (cardObj.usesLeft <= 0) {
-                                const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) player.hand.splice(idx, 1);
-                            }
-                            broadcastGameState();
-                        }, 550);
+                    battle.executeWoodSwordSetAttack(gameState, socket.id, targetPlayerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, (finalLog) => {
+                        if (cardObj.usesLeft <= 0) {
+                            const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
+                            if (idx !== -1) player.hand.splice(idx, 1);
+                        }
+                        broadcastGameState(finalLog || '');
                     });
                 }
             } else if (card.id === 'wood_sword') {
@@ -878,21 +868,17 @@ io.on('connection', (socket) => {
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
             if (targetPlayerId === 'CLOSEST_HIGHER') {
-                battle.executeBronzeShieldSetAttack(gameState, socket.id, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                    setTimeout(() => {
-                        card.usesLeft = defObj.usesLeft;
-                        if (defObj.usesLeft <= 0) player.defenseCard = null;
-                        broadcastGameState();
-                    }, 550);
+                battle.executeBronzeShieldSetAttack(gameState, socket.id, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                    card.usesLeft = defObj.usesLeft;
+                    if (defObj.usesLeft <= 0) player.defenseCard = null;
+                    broadcastGameState(finalLog || '');
                 });
                 return;
             } else if (targetPlayerId === 'LOWER') {
-                battle.executeBronzeShieldSetGroupAttack(gameState, socket.id, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                    setTimeout(() => {
-                        card.usesLeft = defObj.usesLeft;
-                        if (defObj.usesLeft <= 0) player.defenseCard = null;
-                        broadcastGameState();
-                    }, 550);
+                battle.executeBronzeShieldSetGroupAttack(gameState, socket.id, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                    card.usesLeft = defObj.usesLeft;
+                    if (defObj.usesLeft <= 0) player.defenseCard = null;
+                    broadcastGameState(finalLog || '');
                 });
                 return;
             }
@@ -912,12 +898,10 @@ io.on('connection', (socket) => {
             const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
-            battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                setTimeout(() => {
-                    card.usesLeft = defObj.usesLeft;
-                    if (defObj.usesLeft <= 0) player.defenseCard = null;
-                    broadcastGameState();
-                }, 550);
+            battle.executeShieldSetGroupAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                card.usesLeft = defObj.usesLeft;
+                if (defObj.usesLeft <= 0) player.defenseCard = null;
+                broadcastGameState(finalLog || '');
             });
             return;
         }
@@ -927,12 +911,10 @@ io.on('connection', (socket) => {
             const maxAttacks = Math.min(requestedCount, defObj.usesLeft);
 
             if (targetPlayerId === 'ALL_LOWER') {
-                battle.executeWoodSwordSetGroupAttack(gameState, socket.id, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, () => {
-                    setTimeout(() => {
-                        card.usesLeft = defObj.usesLeft;
-                        if (defObj.usesLeft <= 0) player.defenseCard = null;
-                        broadcastGameState();
-                    }, 550);
+                battle.executeWoodSwordSetGroupAttack(gameState, socket.id, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, (finalLog) => {
+                    card.usesLeft = defObj.usesLeft;
+                    if (defObj.usesLeft <= 0) player.defenseCard = null;
+                    broadcastGameState(finalLog || '');
                 });
                 return;
             } else {
@@ -947,12 +929,10 @@ io.on('connection', (socket) => {
                 }
                 if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
 
-                battle.executeWoodSwordSetAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, () => {
-                    setTimeout(() => {
-                        card.usesLeft = defObj.usesLeft;
-                        if (defObj.usesLeft <= 0) player.defenseCard = null;
-                        broadcastGameState();
-                    }, 550);
+                battle.executeWoodSwordSetAttack(gameState, socket.id, targetPlayerId, defObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, (finalLog) => {
+                    card.usesLeft = defObj.usesLeft;
+                    if (defObj.usesLeft <= 0) player.defenseCard = null;
+                    broadcastGameState(finalLog || '');
                 });
                 return;
             }

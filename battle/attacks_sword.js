@@ -242,8 +242,10 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
     }, 1400);
 }
 
-// 木の剣セット（単体連撃）
-function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, onComplete) {
+/**
+ * 木の剣セット（単体連撃：カットイン完全同期）
+ */
+function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, socket, onComplete) {
     const attacker = gameState.players[attackerId];
     const target = gameState.players[targetId];
 
@@ -257,39 +259,49 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
         return;
     }
 
-    let attackIndex = 0;
+    let baseHitRate = 0.5;
+    if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
 
-    function doNextAttack() {
-        if (attackIndex >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
+    const rounds = [];
+    const logs = [];
+    let actualAttacksDone = 0;
 
-        attackIndex++;
+    for (let r = 0; r < maxAttacks; r++) {
+        if (cardObj.usesLeft <= 0) break;
+
+        actualAttacksDone++;
         cardObj.usesLeft -= 1;
 
-        let baseHitRate = 0.5;
-        if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
-
-        let logPrefix = `${attacker.name} が ${target.name} に「木の剣セット」で攻撃 (${attackIndex}/${maxAttacks}回目)！ `;
+        let logPrefix = `${attacker.name} が ${target.name} に「木の剣セット」で攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ `;
         const isHit = Math.random() < baseHitRate;
 
         if (!isHit) {
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-            if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
-                setTimeout(doNextAttack, 500);
-            } else {
-                onComplete();
-            }
-            return;
+            logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
+            rounds.push({
+                roundNumber: actualAttacksDone,
+                results: [{ targetId: target.id, result: 'MISS' }]
+            });
+            continue;
         }
+
+        let cutinRes = 'HIT';
+        let defImg = null;
 
         if (target.defenseCard) {
             if (isDefenseBlocked(target, attacker)) {
-                broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
+                logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！ 得点-3,000点！ (${target.name}は選択不可状態になりました。連撃終了)`);
+                applyScoreChange(target, -3000);
+                target.immunityCount = 2;
+                cutinRes = 'HIT';
+                rounds.push({
+                    roundNumber: actualAttacksDone,
+                    results: [{ targetId: target.id, result: cutinRes }]
+                });
+                break;
             } else {
                 target.defenseCard.usesLeft -= 1;
                 target.defenseCard.revealed = true;
+                defImg = target.defenseCard.card.image || '/images/wood_shield.png';
                 let msg = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                 if (target.defenseCard.card.id === 'grenade') {
                     executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
@@ -298,66 +310,137 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
                     target.defenseCard = null;
                     msg += '（相手の防御カード破棄）';
                 }
-                broadcastGameState(msg);
-
-                if (attackIndex < maxAttacks && cardObj.usesLeft > 0) {
-                    setTimeout(doNextAttack, 500);
-                } else {
-                    onComplete();
-                }
-                return;
+                logs.push(msg);
+                cutinRes = 'BLOCK';
+                rounds.push({
+                    roundNumber: actualAttacksDone,
+                    results: [{ targetId: target.id, result: cutinRes, defCardImage: defImg }]
+                });
+                continue;
             }
         }
 
         if (target.invincibleTurns && target.invincibleTurns > 0) {
             if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
+            logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
+            cutinRes = 'INVINCIBLE';
+            rounds.push({
+                roundNumber: actualAttacksDone,
+                results: [{ targetId: target.id, result: cutinRes }]
+            });
+            break;
         }
 
         if (target.steroidTurns && target.steroidTurns > 0) {
             target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-            onComplete();
-            return;
+            logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（連撃中断）`);
+            cutinRes = 'STEROID';
+            rounds.push({
+                roundNumber: actualAttacksDone,
+                results: [{ targetId: target.id, result: cutinRes }]
+            });
+            break;
         }
 
+        // 命中時は選択不可になるため連撃終了
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃中断)`);
-        onComplete();
+        logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。連撃終了)`);
+        cutinRes = 'HIT';
+        rounds.push({
+            roundNumber: actualAttacksDone,
+            results: [{ targetId: target.id, result: cutinRes }]
+        });
+        break;
     }
 
-    doNextAttack();
+    if (io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: attacker.id,
+                name: attacker.name,
+                avatar: attacker.avatar ? `/images/avatars/${attacker.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'wood_sword_set',
+                name: '木の剣セット',
+                image: '/images/wood_sword_set.png'
+            },
+            defenders: [{
+                id: target.id,
+                name: target.name,
+                avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png'
+            }],
+            rounds: rounds
+        });
+    }
+
+    const totalDuration = Math.max(1500, rounds.length * 1300 + 600);
+    setTimeout(() => {
+        if (logs.length > 0) {
+            broadcastGameState(logs.join('\n'));
+        }
+        onComplete();
+    }, totalDuration);
 }
 
-// 木の剣セット（グループ連撃）
-function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, onComplete) {
+/**
+ * 木の剣セット（グループ連撃：カットイン完全同期）
+ */
+function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, onComplete) {
     const attacker = gameState.players[attackerId];
     if (!attacker) { onComplete(); return; }
 
     const myScore = attacker.score;
+    const initialCandidates = Object.values(gameState.players).filter(p => {
+        if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
+        return p.score < myScore;
+    });
 
-    function getCandidates() {
-        return Object.values(gameState.players).filter(p => {
+    if (initialCandidates.length === 0) {
+        broadcastGameState(`${attacker.name} が「木の剣セット」で攻撃を開始しましたが、対象となる下位プレイヤーがいませんでした。`);
+        onComplete();
+        return;
+    }
+
+    const initGrouped = {};
+    initialCandidates.forEach(p => {
+        const diff = Math.abs(myScore - p.score);
+        if (!initGrouped[diff]) initGrouped[diff] = [];
+        initGrouped[diff].push(p);
+    });
+
+    const initSortedDiffs = Object.keys(initGrouped).map(Number).sort((a, b) => a - b);
+    const sortedInitList = [];
+    initSortedDiffs.forEach(diff => {
+        sortedInitList.push(...initGrouped[diff]);
+    });
+
+    const defendersList = sortedInitList.map(p => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar ? `/images/avatars/${p.avatar}.png` : '/images/avatars/avatar_default.png'
+    }));
+
+    const rounds = [];
+    const logs = [];
+    let stoppedByInvincible = false;
+    let actualAttacksDone = 0;
+    let baseHitRate = 0.5;
+    if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
+
+    for (let r = 0; r < maxAttacks; r++) {
+        if (cardObj.usesLeft <= 0 || stoppedByInvincible) break;
+
+        const roundCandidates = Object.values(gameState.players).filter(p => {
             if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
             return p.score < myScore;
         });
-    }
 
-    let attackCountUsed = 0;
-
-    function startSingleGroupAttack() {
-        const candidates = getCandidates();
-
-        if (candidates.length === 0 || attackCountUsed >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
+        if (roundCandidates.length === 0) break;
 
         const grouped = {};
-        candidates.forEach(p => {
+        roundCandidates.forEach(p => {
             const diff = Math.abs(myScore - p.score);
             if (!grouped[diff]) grouped[diff] = [];
             grouped[diff].push(p);
@@ -375,52 +458,33 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
             attackQueue.push(...group);
         });
 
-        function processQueue(index) {
-            if (index >= attackQueue.length) {
-                attackCountUsed++;
-                cardObj.usesLeft -= 1;
+        actualAttacksDone++;
+        cardObj.usesLeft -= 1;
 
-                broadcastGameState(`${attacker.name} の「木の剣セット」グループ攻撃は全員に外れました。（消費回数: ${attackCountUsed}/${maxAttacks}）`);
+        const currentRoundResults = [];
+        let hitInThisRound = false;
 
-                setTimeout(() => { startSingleGroupAttack(); }, 500);
-                return;
-            }
+        for (let i = 0; i < attackQueue.length; i++) {
+            if (hitInThisRound) break;
 
-            const target = gameState.players[attackQueue[index].id];
-            if (!target) {
-                processQueue(index + 1);
-                return;
-            }
-
-            if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の剣セット」攻撃')) {
-                processQueue(index + 1);
-                return;
-            }
-
-            let baseHitRate = 0.5;
-            if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
-
-            const ratePercent = Math.round(baseHitRate * 100);
-            let logPrefix = `${attacker.name} の「木の剣セット」攻撃 (${attackCountUsed + 1}/${maxAttacks}回目, 対象: ${target.name})！ `;
+            const target = gameState.players[attackQueue[i].id];
+            if (!target) continue;
 
             const isHit = Math.random() < baseHitRate;
 
             if (!isHit) {
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-                setTimeout(() => processQueue(index + 1), 500);
-                return;
+                currentRoundResults.push({ targetId: target.id, result: 'MISS' });
+                continue;
             }
-
-            attackCountUsed++;
-            cardObj.usesLeft -= 1;
 
             if (target.defenseCard) {
                 if (isDefenseBlocked(target, attacker)) {
-                    broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！`);
+                    // 貫通
                 } else {
+                    const defImg = target.defenseCard.card.image || '/images/wood_shield.png';
                     target.defenseCard.usesLeft -= 1;
                     target.defenseCard.revealed = true;
-                    let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
+                    let msg = `${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
                     if (target.defenseCard.card.id === 'grenade') {
                         executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
                     }
@@ -428,37 +492,73 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
                         target.defenseCard = null;
                         msg += '（相手の防御カード破棄）';
                     }
-                    broadcastGameState(msg);
-                    setTimeout(() => startSingleGroupAttack(), 500);
-                    return;
+                    logs.push(msg);
+                    currentRoundResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defImg });
+                    hitInThisRound = true;
+                    break;
                 }
             }
 
             if (target.steroidTurns && target.steroidTurns > 0) {
                 target.steroidRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
+                logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（連撃中断）`);
+                currentRoundResults.push({ targetId: target.id, result: 'STEROID' });
+                stoppedByInvincible = true;
+                hitInThisRound = true;
+                break;
             }
 
             if (target.invincibleTurns && target.invincibleTurns > 0) {
                 if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃中断）`);
-                onComplete();
-                return;
+                logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
+                currentRoundResults.push({ targetId: target.id, result: 'INVINCIBLE' });
+                stoppedByInvincible = true;
+                hitInThisRound = true;
+                break;
             }
 
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
-
-            setTimeout(() => startSingleGroupAttack(), 500);
+            logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目, 対象: ${target.name})！ 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
+            currentRoundResults.push({ targetId: target.id, result: 'HIT' });
+            hitInThisRound = true;
+            break;
         }
 
-        processQueue(0);
+        if (!hitInThisRound) {
+            logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目) は全員に外れました。`);
+        }
+
+        rounds.push({
+            roundNumber: actualAttacksDone,
+            results: currentRoundResults
+        });
     }
 
-    startSingleGroupAttack();
+    if (io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: attacker.id,
+                name: attacker.name,
+                avatar: attacker.avatar ? `/images/avatars/${attacker.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'wood_sword_set',
+                name: '木の剣セット',
+                image: '/images/wood_sword_set.png'
+            },
+            defenders: defendersList,
+            rounds: rounds
+        });
+    }
+
+    const totalDuration = Math.max(1500, rounds.length * 1300 + 600);
+    setTimeout(() => {
+        if (logs.length > 0) {
+            broadcastGameState(logs.join('\n'));
+        }
+        onComplete();
+    }, totalDuration);
 }
 
 // 標準攻撃（木の盾 / 木の剣 単体）
