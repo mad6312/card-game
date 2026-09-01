@@ -134,7 +134,7 @@ socket.on('showCutIn', (data) => {
     }, 2500);
 });
 
-// 攻撃カットイン演出の受信リスナー（完了コールバック連携版）
+// 攻撃カットイン演出の受信リスナー
 socket.on('playAttackCutin', (data) => {
     closeDropActionModal();
     closeTimeBombModal();
@@ -145,7 +145,6 @@ socket.on('playAttackCutin', (data) => {
             isAttackCutinPlaying = false;
             if (pendingLPScoreQueue.length > 0) {
                 setTimeout(() => {
-                    // 同一プレイヤーの重複タスクをマージして整理
                     const mergedTasks = {};
                     while (pendingLPScoreQueue.length > 0) {
                         const task = pendingLPScoreQueue.shift();
@@ -344,7 +343,6 @@ socket.on('syncGameState', (data) => {
 
             if (prevTargetScore !== currentTargetScore) {
                 const startVal = (typeof currentRenderedScores[p.id] === 'number') ? currentRenderedScores[p.id] : prevTargetScore;
-
                 currentRenderedScores[p.id] = startVal;
 
                 pendingScoreChanges.push({
@@ -368,7 +366,12 @@ socket.on('syncGameState', (data) => {
     updateTurnControls(data);
     renderDebugScorePanel(data.players);
 
-    // 3. スコア変動演出のシーケンス制御
+    // 3. スコアボード初期同期（未アニメーション時）
+    if (window.Scoreboard && pendingScoreChanges.length === 0) {
+        window.Scoreboard.update(data.players, myId, availablePresetAvatars);
+    }
+
+    // 4. スコア変動演出のシーケンス制御
     if (isAttackCutinPlaying) {
         pendingScoreChanges.forEach(change => {
             pendingLPScoreQueue.push(change);
@@ -380,14 +383,13 @@ socket.on('syncGameState', (data) => {
     }
 });
 
-/* LP風得点変動アニメーション制御（視認性向上・重複完全防止版） */
+/* LP風得点変動アニメーション制御（確定時にスコアボード更新連動） */
 function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     if (activeScoreRollAnimators[playerId]) {
         cancelAnimationFrame(activeScoreRollAnimators[playerId]);
         delete activeScoreRollAnimators[playerId];
     }
 
-    // 既存のポップアップDOMがあれば完全に即時破棄
     const existingPopup = document.getElementById(`score-popup-${playerId}`);
     if (existingPopup && existingPopup.parentNode) {
         existingPopup.remove();
@@ -430,6 +432,11 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
                 scoreValEl.classList.remove('pulse');
                 void scoreValEl.offsetWidth;
                 scoreValEl.classList.add('pulse');
+            }
+
+            // 得点確定時にスコアボードを最新状況でソート＆更新
+            if (window.Scoreboard && latestGameState && latestGameState.players) {
+                window.Scoreboard.update(latestGameState.players, myId, availablePresetAvatars);
             }
 
             setTimeout(() => {
@@ -1242,7 +1249,6 @@ function calculateWoodSwordSetGroupHitRates(candidates, myScore, attackCount = 1
     return { groupStr: playerNames.join(','), rateDetailStr: rateDetails.join(', ') };
 }
 
-/* 命中率表示更新ロジック（攻撃回数リアルタイム反映） */
 function updateHitRateDisplay(selectEl) {
     if (!selectEl) return;
     const displayEl = document.getElementById('hit-rate-info');
@@ -1327,7 +1333,6 @@ function updateHitRateDisplay(selectEl) {
                 if (lowerCandidates.length > 0) {
                     let res;
                     if (cardId === 'bronze_shield_set') {
-                        // 修正：攻撃回数(attackCount)を渡して正しい最終命中率を算出
                         res = calculateBronzeShieldSetGroupHitRates(lowerCandidates, myScore, attackCount, isDarkness);
                     } else {
                         res = calculateBronzeShieldGroupHitRates(lowerCandidates, myScore, isDarkness);

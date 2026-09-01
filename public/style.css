@@ -371,7 +371,7 @@ body {
     }
 }
 
-/* LP変動値ポップアップ＆吸い込みアニメーション（視認性向上・1.1秒タイムライン） */
+/* LP変動値ポップアップ＆吸い込みアニメーション */
 .score-diff-popup {
     position: absolute;
     left: 100%;
@@ -411,7 +411,6 @@ body {
         transform: translateY(0) scale(1.05);
     }
 
-    /* 25%〜70%の間、プレイヤーがしっかり数値を読めるように画面内に静止滞留 */
     70% {
         opacity: 1;
         transform: translateY(0) scale(1.0);
@@ -426,6 +425,145 @@ body {
         opacity: 0;
         transform: translateX(-26px) scale(0.25);
     }
+}
+
+/* ===================================================
+   スコアボードUIスタイル (3カラムGrid・可変幅fit-content・盤面接触防止)
+   =================================================== */
+#global-scoreboard {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    width: fit-content;
+    min-width: 290px;
+    max-width: min(440px, calc(50vw - 460px));
+    /* 画面中央940pxの盤面に接触する直前で伸縮ストップ */
+    background: rgba(15, 23, 42, 0.94);
+    border: 1.5px solid #f1c40f;
+    border-radius: 8px;
+    padding: 8px 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65);
+    z-index: 1500;
+    /* モーダル(1000〜1100)より前面 */
+    pointer-events: auto;
+    box-sizing: border-box;
+    display: none;
+    font-size: 11px;
+}
+
+/* 画面幅が狭い場合のセーフティ配置 */
+@media (max-width: 1440px) {
+    #global-scoreboard {
+        max-width: 340px;
+    }
+}
+
+.scoreboard-header {
+    text-align: center;
+    font-weight: bold;
+    color: #f1c40f;
+    font-size: 12px;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 5px;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+.scoreboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* 3カラムグリッド構造（列の縦揃え） */
+.scoreboard-row {
+    display: grid;
+    grid-template-columns: minmax(auto, 1fr) auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: rgba(30, 41, 59, 0.6);
+    transition: background 0.2s;
+}
+
+.scoreboard-row.row-me {
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.5);
+}
+
+/* カラム1: プレイヤー情報 */
+.scoreboard-col-player {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.scoreboard-rank {
+    font-weight: bold;
+    color: #f1c40f;
+    width: 22px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.scoreboard-avatar {
+    width: 22px;
+    height: 22px;
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    border: 1px solid #64748b;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #0f172a;
+}
+
+.scoreboard-name {
+    font-weight: bold;
+    color: #f8fafc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+/* カラム2: 持ち点（右揃え） */
+.scoreboard-col-score {
+    font-weight: bold;
+    color: #cbd5e1;
+    text-align: right;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* カラム3: 得点差（右揃え） */
+.scoreboard-col-diff {
+    text-align: right;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 60px;
+}
+
+.score-diff-tag {
+    font-weight: bold;
+    font-size: 10.5px;
+}
+
+.diff-higher {
+    color: #2ecc71;
+}
+
+.diff-lower {
+    color: #e74c3c;
+}
+
+.diff-equal {
+    color: #f1c40f;
+}
+
+.diff-me {
+    color: #38bdf8;
 }
 
 .my-hand-container {

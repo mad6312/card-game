@@ -15,6 +15,9 @@
     <!-- 画面内自動補正ツールチップ -->
     <div id="global-tooltip"></div>
 
+    <!-- 新規：常時表示スコアボードUI（画面左下固定・モーダル最前面） -->
+    <div id="global-scoreboard"></div>
+
     <!-- デバッグパネル -->
     <details class="debug-score-panel" open>
         <summary>🛠 デバッグパネル</summary>
@@ -194,6 +197,8 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <!-- スコアボード制御モジュール -->
+    <script src="/scoreboard.js"></script>
     <!-- 攻撃カットイン演出制御モジュール -->
     <script src="/attackAnimation.js"></script>
     <!-- メインフロントエンドロジック -->
