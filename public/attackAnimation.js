@@ -1,6 +1,6 @@
 /**
  * 攻撃カットインアニメーション制御モジュール (attackAnimation.js)
- * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲＆同時大爆発（グレネード）に対応
+ * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）に対応
  */
 
 (function (window) {
@@ -32,17 +32,18 @@
         const defenders = data.defenders || [];
         const isGunAttack = (card.id === 'shotgun');
         const isGrenadeAttack = (card.id === 'grenade');
+        const isDiamondSword = (card.id === 'diamond_sword');
 
         const rounds = data.rounds || (data.results ? [{ roundNumber: 1, results: data.results }] : []);
 
-        if (rounds.length === 0 && !data.grenadeAction) {
+        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction) {
             if (onComplete) onComplete();
             return;
         }
 
-        // 1. ステージ初期化（手榴弾画像のフォールバック保護付き）
+        // 1. ステージ初期化
         stage.innerHTML = `
-            <div class="cutin-attacker-unit" id="cutin-attacker">
+            <div class="cutin-attacker-unit" id="cutin-attacker" style="${isDiamondSword ? 'display: none !important;' : ''}">
                 <div class="cutin-attacker-info">
                     <img src="${attacker.avatar || '/images/avatars/avatar_default.png'}" class="cutin-avatar-attacker" alt="${attacker.name}" onerror="this.src='/images/avatars/avatar_default.png'">
                     <span class="cutin-player-name">${attacker.name}</span>
@@ -55,16 +56,18 @@
                 </div>
             </div>
             ${isGunAttack ? '<div class="cutin-bullet-tracer" id="cutin-bullet"></div>' : ''}
-            ${isGrenadeAttack ? '<img src="/images/grenade_bomb.png" class="cutin-grenade-bomb" id="cutin-grenade" alt="" onerror="if(this.src.indexOf(\'PNG\')===-1){this.src=\'/images/grenade_bomb.PNG\';}else{this.src=\'/images/grenade.png\';}">' : ''}
+            ${isGrenadeAttack ? '<img src="/images/grenade_bomb.png" class="cutin-grenade-bomb" id="cutin-grenade" alt="手榴弾">' : ''}
             ${isGrenadeAttack ? '<div class="cutin-explosion-blast" id="cutin-explosion"></div>' : ''}
-            <div class="cutin-defenders-group" id="cutin-defenders-group"></div>
+            ${isDiamondSword ? '<img src="/images/diamond_sword_weapon.png" class="cutin-diamond-sword-weapon" id="cutin-diamond-sword" alt="ダイヤの剣" onerror="this.src=\'/images/diamond_sword.png\'">' : ''}
+            ${isDiamondSword ? '<div class="cutin-crystal-explosion-blast" id="cutin-crystal-explosion"></div>' : ''}
+            <div class="cutin-defenders-group ${isDiamondSword ? 'center-aligned' : ''}" id="cutin-defenders-group"></div>
         `;
 
         const defendersGroup = document.getElementById('cutin-defenders-group');
         const defenderUnitMap = {};
         const aliveDefenderIds = new Set(defenders.map(d => d.id));
 
-        // 2. ディフェンダーユニットを横並び生成
+        // 2. ディフェンダーユニットを整列生成
         defenders.forEach((def, idx) => {
             const unit = document.createElement('div');
             unit.className = 'cutin-defender-unit';
@@ -88,8 +91,107 @@
         const bulletEl = document.getElementById('cutin-bullet');
         const grenadeEl = document.getElementById('cutin-grenade');
         const explosionEl = document.getElementById('cutin-explosion');
+        const diamondSwordEl = document.getElementById('cutin-diamond-sword');
+        const crystalExplosionEl = document.getElementById('cutin-crystal-explosion');
 
         layer.classList.add('active');
+
+        // ==========================================
+        // 【ダイヤの剣専用：天空刺突＆クリスタル大爆発】
+        // ==========================================
+        if (isDiamondSword && data.diamondSwordAction) {
+            const action = data.diamondSwordAction;
+            const victims = action.victims || [];
+            const primaryTargetId = action.primaryTargetId;
+            const primaryUnit = defenderUnitMap[primaryTargetId];
+
+            setTimeout(() => {
+                const stageRect = stage.getBoundingClientRect();
+                const defendersGroupRect = defendersGroup.getBoundingClientRect();
+
+                let targetCenterX = (defendersGroupRect.left - stageRect.left) + (defendersGroupRect.width / 2);
+                let targetCenterY = (defendersGroupRect.top - stageRect.top) + (defendersGroupRect.height / 2);
+
+                if (primaryUnit) {
+                    const pRect = primaryUnit.getBoundingClientRect();
+                    targetCenterX = (pRect.left - stageRect.left) + (pRect.width / 2);
+                }
+
+                if (diamondSwordEl) {
+                    diamondSwordEl.style.left = `${targetCenterX}px`;
+                    diamondSwordEl.classList.add('fall');
+                }
+
+                setTimeout(() => {
+                    if (crystalExplosionEl) {
+                        crystalExplosionEl.style.left = `${targetCenterX}px`;
+                        crystalExplosionEl.style.top = `${targetCenterY}px`;
+                        crystalExplosionEl.classList.add('explode');
+                    }
+
+                    if (flash) {
+                        flash.classList.remove('flash');
+                        void flash.offsetWidth;
+                        flash.classList.add('flash');
+                    }
+
+                    const totalDefs = defenders.length;
+
+                    victims.forEach((v) => {
+                        const vUnit = defenderUnitMap[v.id];
+                        if (!vUnit) return;
+
+                        const vBadge = document.getElementById(`cutin-badge-${v.id}`);
+                        const vCard = document.getElementById(`cutin-def-card-${v.id}`);
+                        const vAura = document.getElementById(`cutin-aura-${v.id}`);
+                        const defIdx = Number(vUnit.getAttribute('data-index') || 0);
+
+                        // 中央からの放射状吹き飛び方向
+                        let blowClass = 'blow-straight-up';
+                        if (totalDefs === 1) {
+                            blowClass = 'blow-straight-up';
+                        } else if (totalDefs === 2) {
+                            blowClass = (defIdx === 0) ? 'blow-left-up' : 'blow-right-up';
+                        } else if (totalDefs === 3) {
+                            if (defIdx === 0) blowClass = 'blow-left-up';
+                            else if (defIdx === 1) blowClass = 'blow-straight-up';
+                            else blowClass = 'blow-right-up';
+                        } else {
+                            if (defIdx === 0) blowClass = 'blow-left-up';
+                            else if (defIdx === totalDefs - 1) blowClass = 'blow-right-up';
+                            else blowClass = 'blow-straight-up';
+                        }
+
+                        if (v.result === 'PROTECTED') {
+                            if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
+                            if (vAura) vAura.classList.add('show');
+                            if (vBadge) {
+                                vBadge.innerText = v.protectText || '無敵！';
+                                vBadge.className = 'cutin-result-badge badge-invincible show';
+                            }
+                        } else if (v.result === 'DODGE') {
+                            // お守り身代わり回避
+                            if (vBadge) {
+                                vBadge.innerText = '回避！';
+                                vBadge.className = 'cutin-result-badge badge-dodge show';
+                            }
+                            vUnit.classList.add('dodge-action');
+                        } else {
+                            // 通常被弾（防御カードがあっても破棄されつつ「命中！」）
+                            if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
+                            if (vBadge) {
+                                vBadge.innerText = '命中！';
+                                vBadge.className = 'cutin-result-badge badge-hit show';
+                            }
+                            vUnit.classList.add(blowClass);
+                        }
+                    });
+
+                    setTimeout(finishAnimation, 1050);
+                }, 450);
+            }, 300);
+            return;
+        }
 
         // ==========================================
         // 【グレネード専用：手榴弾投擲＆同時大爆発演出】

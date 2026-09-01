@@ -154,7 +154,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b);
             return sortedByNumber[0].id;
         }
     }
@@ -631,7 +631,7 @@ io.on('connection', (socket) => {
             battle.executeDisasterAttack(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'diamond_sword') {
             player.hand.splice(cardIndex, 1);
-            battle.executeDiamondSword(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect);
+            battle.executeDiamondSword(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'earthquake') {
             player.hand.splice(cardIndex, 1);
             battle.executeEarthquake(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);

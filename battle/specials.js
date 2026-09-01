@@ -5,14 +5,41 @@
 
 const { applyScoreChange } = require('./common');
 
-// ダイヤの剣
-function executeDiamondSword(gameState, casterSocketId, broadcastGameState, isImmuneToRound1CardEffect) {
+// ダイヤの剣（天空刺突＆クリスタル大爆発カットイン完全同期）
+function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
 
     const allPlayers = Object.values(gameState.players);
     const maxScore = Math.max(...allPlayers.map(p => p.score));
+
+    // 1位の中で基準となる本ターゲットの選定
+    const topPlayers = allPlayers.filter(p => p.score === maxScore);
+    const primaryTarget = topPlayers[0];
+
+    // 本ターゲットと±1,000点以内の対象者全員（1位含む）
     const targetPlayers = allPlayers.filter(p => Math.abs(maxScore - p.score) <= 1000);
+    const splashOthers = targetPlayers.filter(p => p.id !== primaryTarget.id);
+
+    // スプラッシュ人数に応じた中央整列リストの構築
+    const defendersList = [];
+    if (splashOthers.length === 0) {
+        defendersList.push({ id: primaryTarget.id, name: primaryTarget.name, avatar: primaryTarget.avatar ? `/images/avatars/${primaryTarget.avatar}.png` : '/images/avatars/avatar_default.png' });
+    } else if (splashOthers.length === 1) {
+        defendersList.push({ id: primaryTarget.id, name: primaryTarget.name, avatar: primaryTarget.avatar ? `/images/avatars/${primaryTarget.avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: splashOthers[0].id, name: splashOthers[0].name, avatar: splashOthers[0].avatar ? `/images/avatars/${splashOthers[0].avatar}.png` : '/images/avatars/avatar_default.png' });
+    } else if (splashOthers.length === 2) {
+        defendersList.push({ id: splashOthers[0].id, name: splashOthers[0].name, avatar: splashOthers[0].avatar ? `/images/avatars/${splashOthers[0].avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: primaryTarget.id, name: primaryTarget.name, avatar: primaryTarget.avatar ? `/images/avatars/${primaryTarget.avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: splashOthers[1].id, name: splashOthers[1].name, avatar: splashOthers[1].avatar ? `/images/avatars/${splashOthers[1].avatar}.png` : '/images/avatars/avatar_default.png' });
+    } else {
+        defendersList.push({ id: splashOthers[0].id, name: splashOthers[0].name, avatar: splashOthers[0].avatar ? `/images/avatars/${splashOthers[0].avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: splashOthers[1].id, name: splashOthers[1].name, avatar: splashOthers[1].avatar ? `/images/avatars/${splashOthers[1].avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: primaryTarget.id, name: primaryTarget.name, avatar: primaryTarget.avatar ? `/images/avatars/${primaryTarget.avatar}.png` : '/images/avatars/avatar_default.png' });
+        defendersList.push({ id: splashOthers[2].id, name: splashOthers[2].name, avatar: splashOthers[2].avatar ? `/images/avatars/${splashOthers[2].avatar}.png` : '/images/avatars/avatar_default.png' });
+    }
+
+    const victimsData = [];
     const affectedLogs = [];
 
     targetPlayers.forEach(target => {
@@ -29,6 +56,7 @@ function executeDiamondSword(gameState, casterSocketId, broadcastGameState, isIm
             target.hand.splice(obanIndex, 1);
             applyScoreChange(target, 8000);
             affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8,000点獲得)`);
+            victimsData.push({ id: target.id, result: 'DODGE' });
             return;
         } else if (kobanSetIndex !== -1) {
             const kobanSet = target.hand[kobanSetIndex];
@@ -38,11 +66,13 @@ function executeDiamondSword(gameState, casterSocketId, broadcastGameState, isIm
 
             let subMsg = kobanSet.usesLeft <= 0 ? (target.hand.splice(kobanSetIndex, 1), '・カード破棄') : `・残り${kobanSet.usesLeft}回`;
             affectedLogs.push(`${target.name}(「お守り小判セット」が身代わり発動！効果無効化＆+2,000点獲得${subMsg})`);
+            victimsData.push({ id: target.id, result: 'DODGE' });
             return;
         } else if (kobanIndex !== -1) {
             target.hand.splice(kobanIndex, 1);
             applyScoreChange(target, 3000);
             affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3,000点獲得)`);
+            victimsData.push({ id: target.id, result: 'DODGE' });
             return;
         }
 
@@ -55,22 +85,59 @@ function executeDiamondSword(gameState, casterSocketId, broadcastGameState, isIm
             if (isSteroid) target.steroidRevealed = true;
 
             let defMsg = '';
+            const hadDef = !!target.defenseCard;
             if (target.defenseCard) {
                 target.defenseCard = null;
                 defMsg = '防御カード破棄';
             }
-            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
-            affectedLogs.push(`${target.name}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
+            const stateName = isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！');
+            affectedLogs.push(`${target.name}(${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
+
+            victimsData.push({
+                id: target.id,
+                result: 'PROTECTED',
+                protectText: stateName,
+                hasDefenseCard: hadDef
+            });
         } else {
+            const hadDef = !!target.defenseCard;
             target.hand = [];
             target.defenseCard = null;
             applyScoreChange(target, -5000);
             target.immunityCount = 2;
             affectedLogs.push(`${target.name}(-5,000点・手札防御全破棄・選択不可2T)`);
+
+            victimsData.push({
+                id: target.id,
+                result: 'HIT',
+                hasDefenseCard: hadDef
+            });
         }
     });
 
-    broadcastGameState(`${caster.name} が「ダイヤの剣」を発動！ (対象: ${affectedLogs.join(' / ')})`);
+    if (io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: caster.id,
+                name: caster.name,
+                avatar: caster.avatar ? `/images/avatars/${caster.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'diamond_sword',
+                name: 'ダイヤの剣',
+                image: '/images/diamond_sword.png'
+            },
+            defenders: defendersList,
+            diamondSwordAction: {
+                primaryTargetId: primaryTarget.id,
+                victims: victimsData
+            }
+        });
+    }
+
+    setTimeout(() => {
+        broadcastGameState(`${caster.name} が「ダイヤの剣」を発動！ (対象: ${affectedLogs.join(' / ')})`);
+    }, 1800);
 }
 
 // 地震
