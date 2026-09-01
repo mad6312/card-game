@@ -154,7 +154,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b.number);
             return sortedByNumber[0].id;
         }
     }
@@ -251,12 +251,25 @@ function proceedToNextTurn() {
             } else {
                 p.timeBombTurns -= 1;
                 if (p.timeBombTurns === 0) {
-                    battle.applyScoreChange(p, -6000);
-                    p.hand = [];
-                    p.defenseCard = null;
-                    p.immunityCount = 2;
-                    expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発！ -6,000点、手札・防御全破棄、選択不可(2T)付与！`);
-                    hasScoreChangeOnExpire = true;
+                    // 時限爆弾爆発直前の手札緊急自動発動判定
+                    const autoRes = battle.tryAutoTriggerDefense(gameState, p, {
+                        allowSteroid: true,
+                        isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+                        broadcastGameState: broadcastGameState
+                    });
+
+                    if (autoRes) {
+                        p.timeBombTurns = 0; // 自動発動した無敵/ステロイドにより消滅
+                        expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発寸前に手札から「${autoRes.cardName}」が自動発動！ 無敵/ステロイド状態になり爆発を無効化しました！\n(${autoRes.logMsg})`);
+                        if (autoRes.cardId === 'dark_matter') hasScoreChangeOnExpire = true;
+                    } else {
+                        battle.applyScoreChange(p, -6000);
+                        p.hand = [];
+                        p.defenseCard = null;
+                        p.immunityCount = 2;
+                        expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発！ -6,000点、手札・防御全破棄、選択不可(2T)付与！`);
+                        hasScoreChangeOnExpire = true;
+                    }
                 }
             }
         }
@@ -485,7 +498,6 @@ io.on('connection', (socket) => {
         io.emit('updateBonusSkipSetting', skipBonusModal);
     });
 
-    // ターン開始ボーナス得点の受け取り処理（数値指定式対応）
     socket.on('chooseBonus', (data) => {
         battle.resetScoreChanges(gameState);
         const currentTurnId = gameState.currentTurnPlayerId;

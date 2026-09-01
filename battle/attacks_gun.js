@@ -4,6 +4,7 @@
  */
 
 const { applyScoreChange } = require('./common');
+const { tryAutoTriggerDefense } = require('./triggers');
 
 // グレネードカウンター処理
 function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState) {
@@ -18,11 +19,17 @@ function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState)
     const counterLogs = [];
 
     targets.forEach(target => {
+        // 手札からの緊急自動発動チェック
+        const autoRes = tryAutoTriggerDefense(gameState, target, {
+            allowSteroid: true,
+            broadcastGameState: broadcastGameState
+        });
+
         const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
         const isSteroid = target.steroidTurns && target.steroidTurns > 0;
         const isImmune = target.immunityCount && target.immunityCount > 0;
 
-        if (isInvincible || isSteroid || isImmune) {
+        if (autoRes || isInvincible || isSteroid || isImmune) {
             if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             if (isSteroid) target.steroidRevealed = true;
 
@@ -31,8 +38,9 @@ function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState)
                 target.defenseCard = null;
                 defMsg = '防御カード破棄';
             }
-            const stateName = isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可');
-            counterLogs.push(`${target.name}(${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
+            const stateName = autoRes ? autoRes.stateName.replace('！', '') : (isInvincible ? '無敵' : (isSteroid ? 'ステロイド' : '選択不可'));
+            const autoPrefix = autoRes ? `「${autoRes.cardName}」自動発動・` : '';
+            counterLogs.push(`${target.name}(${autoPrefix}${stateName}ガード${defMsg ? '・' + defMsg : ''})`);
         } else {
             target.hand = [];
             target.defenseCard = null;
@@ -69,9 +77,8 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
     const centerScore = target.score;
     const allPlayers = Object.values(gameState.players);
     const splashOtherPlayers = allPlayers.filter(p => p.id !== attackerId && p.id !== target.id && Math.abs(p.score - centerScore) <= 1000);
-    const isSelfSplash = Math.abs(attacker.score - centerScore) <= 1000;
 
-    // 画面上の右側整列リストの構築（本ターゲット中央、スプラッシュ左右）
+    // 画面上の右側整列リストの構築
     const defendersList = [];
     if (splashOtherPlayers.length === 0) {
         defendersList.push({ id: target.id, name: target.name, avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png' });
@@ -88,7 +95,6 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
     const affectedLogs = [];
 
     if (isHit) {
-        // 全被災者（直撃者＋スプラッシュ＋自分）の判定処理
         const allVictims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
 
         allVictims.forEach(victim => {
@@ -97,22 +103,30 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
                 return;
             }
 
+            // 手札からの緊急自動発動チェック
+            const autoRes = tryAutoTriggerDefense(gameState, victim, {
+                allowSteroid: true,
+                isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
             const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
             const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
             const isImmune = victim.immunityCount && victim.immunityCount > 0;
 
-            if (isInvincible || isSteroid || isImmune) {
+            if (autoRes || isInvincible || isSteroid || isImmune) {
                 if (isInvincible && victim.invincibleSource === 'ARMOR') victim.armorRevealed = true;
                 if (isSteroid) victim.steroidRevealed = true;
 
                 let defMsg = '';
-                const hadDef = !!victim.defenseCard;
+                const hadDef = autoRes ? autoRes.hadDefense : !!victim.defenseCard;
                 if (victim.defenseCard) {
                     victim.defenseCard = null;
                     defMsg = '防御カード破棄';
                 }
-                const stateName = isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！');
-                affectedLogs.push(`${victim.name}(${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
+                const stateName = autoRes ? autoRes.stateName : (isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！'));
+                const autoPrefix = autoRes ? `「${autoRes.cardName}」自動発動・` : '';
+                affectedLogs.push(`${victim.name}(${autoPrefix}${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
 
                 victimsData.push({
                     id: victim.id,
@@ -213,7 +227,6 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
         attackQueue.push(...group);
     });
 
-    // 攻撃順（キュー順）通りのディフェンダー配列
     const defendersList = attackQueue.map(p => ({
         id: p.id,
         name: p.name,
@@ -256,22 +269,30 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
                 return;
             }
 
+            // 手札からの緊急自動発動チェック
+            const autoRes = tryAutoTriggerDefense(gameState, victim, {
+                allowSteroid: true,
+                isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
             const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
             const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
             const isImmune = victim.immunityCount && victim.immunityCount > 0;
 
-            if (isInvincible || isSteroid || isImmune) {
+            if (autoRes || isInvincible || isSteroid || isImmune) {
                 if (isInvincible && victim.invincibleSource === 'ARMOR') victim.armorRevealed = true;
                 if (isSteroid) victim.steroidRevealed = true;
 
                 let defMsg = '';
-                const hadDef = !!victim.defenseCard;
+                const hadDef = autoRes ? autoRes.hadDefense : !!victim.defenseCard;
                 if (victim.defenseCard) {
                     victim.defenseCard = null;
                     defMsg = '防御カード破棄';
                 }
-                const stateName = isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！');
-                affectedLogs.push(`${victim.name}(${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
+                const stateName = autoRes ? autoRes.stateName : (isInvincible ? '無敵！' : (isSteroid ? 'ステロイド！' : '選択不可！'));
+                const autoPrefix = autoRes ? `「${autoRes.cardName}」自動発動・` : '';
+                affectedLogs.push(`${victim.name}(${autoPrefix}${stateName.replace('！', '')}ガード${defMsg ? '・' + defMsg : ''})`);
 
                 victimsData.push({
                     id: victim.id,
@@ -408,6 +429,20 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
 
             let penetrateMsg = target.defenseCard ? ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)` : '';
 
+            // 手札からの緊急自動発動チェック
+            const autoRes = tryAutoTriggerDefense(gameState, target, {
+                allowSteroid: true,
+                isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
+            if (autoRes) {
+                cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
+                finalLog = `${attacker.name} の「ショットガン」攻撃 (対象: ${target.name})！ 命中！${penetrateMsg} しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃終了）\n(${autoRes.logMsg})`;
+                stoppedEarly = true;
+                break;
+            }
+
             if (target.invincibleTurns && target.invincibleTurns > 0) {
                 if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 finalLog = `${attacker.name} の「ショットガン」攻撃 (対象: ${target.name})！ 命中！${penetrateMsg} しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（攻撃終了）`;
@@ -493,7 +528,17 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
     } else {
         let penetrateMsg = target.defenseCard ? ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)` : '';
 
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
+        // 手札からの緊急自動発動チェック
+        const autoRes = tryAutoTriggerDefense(gameState, target, {
+            allowSteroid: true,
+            isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
+            broadcastGameState: broadcastGameState
+        });
+
+        if (autoRes) {
+            cutinRes = autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
+            finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoRes.logMsg})`;
+        } else if (target.invincibleTurns && target.invincibleTurns > 0) {
             if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`;
             cutinRes = 'INVINCIBLE';

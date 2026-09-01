@@ -4,6 +4,7 @@
  */
 
 const { applyScoreChange } = require('./common');
+const { tryAutoTriggerDefense } = require('./triggers');
 
 // ダイヤの剣（天空刺突＆クリスタル大爆発カットイン完全同期）
 function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
@@ -48,38 +49,11 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             return;
         }
 
-        const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
-        const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
-        const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
-
-        if (obanIndex !== -1) {
-            target.hand.splice(obanIndex, 1);
-            applyScoreChange(target, 8000);
-            affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8,000点獲得)`);
-            victimsData.push({ id: target.id, result: 'DODGE' });
-            return;
-        } else if (kobanSetIndex !== -1) {
-            const kobanSet = target.hand[kobanSetIndex];
-            if (!kobanSet.usesLeft) kobanSet.usesLeft = 3;
-            kobanSet.usesLeft -= 1;
-            applyScoreChange(target, 2000);
-
-            let subMsg = kobanSet.usesLeft <= 0 ? (target.hand.splice(kobanSetIndex, 1), '・カード破棄') : `・残り${kobanSet.usesLeft}回`;
-            affectedLogs.push(`${target.name}(「お守り小判セット」が身代わり発動！効果無効化＆+2,000点獲得${subMsg})`);
-            victimsData.push({ id: target.id, result: 'DODGE' });
-            return;
-        } else if (kobanIndex !== -1) {
-            target.hand.splice(kobanIndex, 1);
-            applyScoreChange(target, 3000);
-            affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3,000点獲得)`);
-            victimsData.push({ id: target.id, result: 'DODGE' });
-            return;
-        }
-
         const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
         const isSteroid = target.steroidTurns && target.steroidTurns > 0;
         const isImmune = target.immunityCount && target.immunityCount > 0;
 
+        // 1. すでに「無敵状態」「ステロイド状態」「選択不可状態」の場合（お守りは温存）
         if (isInvincible || isSteroid || isImmune) {
             if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             if (isSteroid) target.steroidRevealed = true;
@@ -98,6 +72,61 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
                 result: 'PROTECTED',
                 protectText: stateName,
                 hasDefenseCard: hadDef
+            });
+            return;
+        }
+
+        // 2. 無敵/ステロイドでない場合：お守り系カードの自動消費（セット中防御カード全破棄）
+        const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
+        const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
+        const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
+
+        if (obanIndex !== -1) {
+            target.hand.splice(obanIndex, 1);
+            const hadDef = !!target.defenseCard;
+            target.defenseCard = null; // 防御カード破棄
+            applyScoreChange(target, 8000);
+            affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8,000点獲得${hadDef ? '・防御カード破棄' : ''})`);
+            victimsData.push({ id: target.id, result: 'DODGE', hasDefenseCard: hadDef });
+            return;
+        } else if (kobanSetIndex !== -1) {
+            const kobanSet = target.hand[kobanSetIndex];
+            if (!kobanSet.usesLeft) kobanSet.usesLeft = 3;
+            kobanSet.usesLeft -= 1;
+            const hadDef = !!target.defenseCard;
+            target.defenseCard = null; // 防御カード破棄
+            applyScoreChange(target, 2000);
+
+            let subMsg = kobanSet.usesLeft <= 0 ? (target.hand.splice(kobanSetIndex, 1), '・カード破棄') : `・残り${kobanSet.usesLeft}回`;
+            affectedLogs.push(`${target.name}(「お守り小判セット」が身代わり発動！効果無効化＆+2,000点獲得${subMsg}${hadDef ? '・防御カード破棄' : ''})`);
+            victimsData.push({ id: target.id, result: 'DODGE', hasDefenseCard: hadDef });
+            return;
+        } else if (kobanIndex !== -1) {
+            target.hand.splice(kobanIndex, 1);
+            const hadDef = !!target.defenseCard;
+            target.defenseCard = null; // 防御カード破棄
+            applyScoreChange(target, 3000);
+            affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3,000点獲得${hadDef ? '・防御カード破棄' : ''})`);
+            victimsData.push({ id: target.id, result: 'DODGE', hasDefenseCard: hadDef });
+            return;
+        }
+
+        // 3. お守りがない場合：ステロイド/無敵アーマー/ダークマターの手札自動発動チェック
+        const autoRes = tryAutoTriggerDefense(gameState, target, {
+            allowSteroid: true,
+            isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+            broadcastGameState: broadcastGameState
+        });
+
+        if (autoRes) {
+            let defMsg = autoRes.hadDefense ? '・防御カード破棄' : '';
+            affectedLogs.push(`${target.name}(「${autoRes.cardName}」自動発動・${autoRes.stateName.replace('！', '')}ガード${defMsg})`);
+
+            victimsData.push({
+                id: target.id,
+                result: 'PROTECTED',
+                protectText: autoRes.stateName,
+                hasDefenseCard: autoRes.hadDefense
             });
         } else {
             const hadDef = !!target.defenseCard;
@@ -165,14 +194,22 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
                 return;
             }
 
+            // 手札からの緊急自動発動チェック
+            const autoRes = tryAutoTriggerDefense(gameState, target, {
+                allowSteroid: true,
+                isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
             const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
             const isSteroid = target.steroidTurns && target.steroidTurns > 0;
 
-            if (isInvincible || isSteroid) {
+            if (autoRes || isInvincible || isSteroid) {
                 if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 if (isSteroid) target.steroidRevealed = true;
-                const stateName = isInvincible ? '無敵' : 'ステロイド';
-                affectedLogs.push(`${target.name}(${stateName}ガード)`);
+                const stateName = autoRes ? autoRes.stateName.replace('！', '') : (isInvincible ? '無敵' : 'ステロイド');
+                const autoPrefix = autoRes ? `「${autoRes.cardName}」自動発動・` : '';
+                affectedLogs.push(`${target.name}(${autoPrefix}${stateName}ガード)`);
                 return;
             }
 
@@ -190,7 +227,7 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
     }, 2000);
 }
 
-// 大災害
+// 大災害（※仕様により手札自動発動の対象外）
 function executeDisasterAttack(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
@@ -264,26 +301,43 @@ function executeDarkMatter(gameState, casterSocketId, broadcastGameState, isImmu
     Object.values(gameState.players).forEach(opponent => {
         if (opponent.id === player.id || isImmuneToRound1CardEffect(opponent.id, casterSocketId)) return;
 
-        const isInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
-        const isImmune = opponent.immunityCount && opponent.immunityCount > 0;
-        if (isInvincible || isImmune) return;
-
         const isConditionA = (opponent.score === prevMyScore);
         const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
 
         if (isConditionA || isConditionB) {
+            // 既に無敵・選択不可状態の場合はペナルティを受けない（手札温存）
+            const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
+            const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
+            if (isAlreadyInvincible || isAlreadyImmune) return;
+
+            // 1. まず50%の不発判定を行う（不発ならペナルティが発生しないため手札温存）
             const isSuccess = Math.random() < 0.5;
-
-            if (isSuccess) {
-                opponent.hand = [];
-                opponent.defenseCard = null;
-                applyScoreChange(opponent, -3000);
-                opponent.immunityCount = 2;
-
-                penalizedNames.push(`${opponent.name}(成功)`);
-            } else {
+            if (!isSuccess) {
                 penalizedNames.push(`${opponent.name}(不発)`);
+                return;
             }
+
+            // 2. ペナルティ発生確定時：【ケースB】の手札カウンター判定（ステロイドでは無効化不可）
+            const autoRes = tryAutoTriggerDefense(gameState, opponent, {
+                allowSteroid: false,
+                isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
+            // 無敵アーマー・ダークマター等で完全無効化できた場合
+            if (autoRes && autoRes.canBlock) {
+                penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
+                return;
+            }
+
+            // ペナルティ直撃（ステロイド無駄消費またはカウンターなし）
+            opponent.hand = [];
+            opponent.defenseCard = null;
+            applyScoreChange(opponent, -3000);
+            opponent.immunityCount = 2;
+
+            const steroidWasteNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
+            penalizedNames.push(`${opponent.name}${steroidWasteNotice}`);
         }
     });
 
@@ -292,7 +346,7 @@ function executeDarkMatter(gameState, casterSocketId, broadcastGameState, isImmu
     broadcastGameState(logMsg);
 }
 
-// 煙幕
+// 煙幕（※仕様により手札自動発動の対象外）
 function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImmuneToRound1CardEffect) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
@@ -375,28 +429,45 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
     Object.values(gameState.players).forEach(opponent => {
         if (opponent.id === player.id || isImmuneToRound1CardEffect(opponent.id, player.id)) return;
 
-        const isInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
-        const isImmune = opponent.immunityCount && opponent.immunityCount > 0;
-        const isSteroid = opponent.steroidTurns && opponent.steroidTurns > 0;
-
-        if (isInvincible || isImmune) return;
-        if (buffType === 'STEROID' && isSteroid) return;
-
         const isConditionA = (opponent.score === prevMyScore);
         const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
 
         if (isConditionA || isConditionB) {
-            const isSuccess = Math.random() < 0.5;
+            // 既に無敵・選択不可・ステロイド（ステロイド解除時のみ）状態の場合はペナルティを受けない（手札温存）
+            const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
+            const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
+            const isAlreadySteroid = opponent.steroidTurns && opponent.steroidTurns > 0;
 
-            if (isSuccess) {
-                opponent.hand = [];
-                opponent.defenseCard = null;
-                applyScoreChange(opponent, -3000);
-                opponent.immunityCount = 2;
-                penalizedNames.push(`${opponent.name}(成功)`);
-            } else {
+            if (isAlreadyInvincible || isAlreadyImmune) return;
+            if (buffType === 'STEROID' && isAlreadySteroid) return;
+
+            // 1. まず50%の不発判定を行う（不発ならペナルティが発生しないため手札温存）
+            const isSuccess = Math.random() < 0.5;
+            if (!isSuccess) {
                 penalizedNames.push(`${opponent.name}(不発)`);
+                return;
             }
+
+            // 2. ペナルティ発生確定時：【ケースB】の手札カウンター判定（ステロイドでは無効化不可）
+            const autoRes = tryAutoTriggerDefense(gameState, opponent, {
+                allowSteroid: false,
+                isImmuneToRound1CardEffect: isImmuneToRound1CardEffect
+            });
+
+            // 無敵アーマー・ダークマター等で完全無効化できた場合
+            if (autoRes && autoRes.canBlock) {
+                penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
+                return;
+            }
+
+            // ペナルティ直撃（ステロイド無駄消費またはカウンターなし）
+            opponent.hand = [];
+            opponent.defenseCard = null;
+            applyScoreChange(opponent, -3000);
+            opponent.immunityCount = 2;
+
+            const steroidWasteNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
+            penalizedNames.push(`${opponent.name}${steroidWasteNotice}`);
         }
     });
 
