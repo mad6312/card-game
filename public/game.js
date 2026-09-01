@@ -8,7 +8,7 @@ let currentCardSettings = {};
 let currentRenderedScores = {};
 let targetRenderedScores = {};
 let activeScoreRollAnimators = {};
-let activeScorePopups = {}; // 実行中ポップアップ情報の保持用
+let activeScorePopups = {};
 let lastKnownPlayerNames = {};
 let showOtherPlayersInfo = true;
 let isTimeBombModalTriggeredByEndTurn = false;
@@ -366,7 +366,7 @@ socket.on('syncGameState', (data) => {
     updateTurnControls(data);
     renderDebugScorePanel(data.players);
 
-    // 3. スコアボード初期同期（未アニメーション時）
+    // 3. スコアボード初期同期
     if (window.Scoreboard && pendingScoreChanges.length === 0) {
         window.Scoreboard.update(data.players, myId, availablePresetAvatars);
     }
@@ -383,7 +383,7 @@ socket.on('syncGameState', (data) => {
     }
 });
 
-/* LP風得点変動アニメーション制御（確定時にスコアボード更新連動） */
+/* LP風得点変動アニメーション制御 */
 function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
     if (activeScoreRollAnimators[playerId]) {
         cancelAnimationFrame(activeScoreRollAnimators[playerId]);
@@ -434,7 +434,6 @@ function triggerLPScoreAnimation(playerId, startVal, endVal, diffVal) {
                 scoreValEl.classList.add('pulse');
             }
 
-            // 得点確定時にスコアボードを最新状況でソート＆更新
             if (window.Scoreboard && latestGameState && latestGameState.players) {
                 window.Scoreboard.update(latestGameState.players, myId, availablePresetAvatars);
             }
@@ -752,9 +751,23 @@ document.addEventListener('mouseout', (e) => {
     }
 });
 
-function chooseBonusChoice(accept) {
-    socket.emit('chooseBonus', accept);
-    document.getElementById('bonus-choice-modal').style.display = 'none';
+/**
+ * ターン開始ボーナス得点の決定処理（数値選択式 / スキップON時は0点処理）
+ */
+function chooseBonusChoice(directAmount) {
+    let scoreAmount = 3000;
+    if (typeof directAmount === 'number') {
+        scoreAmount = directAmount;
+    } else {
+        const selectEl = document.getElementById('turn-bonus-score-select');
+        if (selectEl) {
+            scoreAmount = Number(selectEl.value) || 0;
+        }
+    }
+
+    socket.emit('chooseBonus', { scoreAmount });
+    const modal = document.getElementById('bonus-choice-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 function toggleBonusSkip(enabled) {
@@ -894,15 +907,20 @@ function updateTurnControls(data) {
 
     if (data.turnPhase === 'BONUS_CHOICE') {
         if (skipBonusModal) {
+            // スキップON時はダイアログを表示せず「獲得得点: 0点」として自動処理
             const hasActiveAnim = Object.keys(activeScoreRollAnimators).length > 0 || isAttackCutinPlaying;
             if (hasActiveAnim) {
-                setTimeout(() => chooseBonusChoice(false), 650);
+                setTimeout(() => chooseBonusChoice(0), 650);
             } else {
-                chooseBonusChoice(false);
+                chooseBonusChoice(0);
             }
             return;
         }
-        if (bonusModal) bonusModal.style.display = 'block';
+        if (bonusModal) {
+            const selectEl = document.getElementById('turn-bonus-score-select');
+            if (selectEl) selectEl.value = "3000"; // 初期値 +3,000点
+            bonusModal.style.display = 'block';
+        }
         roundInfo.innerHTML += ` <span style="color:#f1c40f;">【ボーナス選択中】</span>`;
     } else if (data.turnPhase === 'MAIN') {
         roundInfo.innerHTML += `<br><span style="color:#f1c40f; font-size: 0.85em;">★ あなたのターンです</span>`;
@@ -1376,7 +1394,6 @@ function updateHitRateDisplay(selectEl) {
         const attackCount = countSelect ? (Number(countSelect.value) || 1) : 1;
 
         if (selectEl.value === 'ALL_LOWER' && myPlayer) {
-            const myScore = myPlayer.score;
             const lowerCandidates = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !isLaterPlayerInRound1(myId, p.id));
             if (lowerCandidates.length > 0) {
                 const { rateDetailStr } = calculateWoodSwordSetGroupHitRates(lowerCandidates, myScore, attackCount, isDarkness);

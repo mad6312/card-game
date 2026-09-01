@@ -154,7 +154,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
             return sortedByNumber[0].id;
         }
     }
@@ -485,22 +485,34 @@ io.on('connection', (socket) => {
         io.emit('updateBonusSkipSetting', skipBonusModal);
     });
 
-    socket.on('chooseBonus', (acceptBonus) => {
+    // ターン開始ボーナス得点の受け取り処理（数値指定式対応）
+    socket.on('chooseBonus', (data) => {
         battle.resetScoreChanges(gameState);
         const currentTurnId = gameState.currentTurnPlayerId;
         if (socket.id !== currentTurnId || gameState.turnPhase !== 'BONUS_CHOICE') return;
 
         const player = gameState.players[socket.id];
-        if (acceptBonus) battle.applyScoreChange(player, 3000);
+        const rawAmount = data ? (typeof data.scoreAmount === 'number' ? data.scoreAmount : (data.acceptBonus ? 3000 : 0)) : 3000;
+        const scoreAmount = Math.min(3000, Math.max(-3000, Number(rawAmount) || 0));
+
+        if (scoreAmount !== 0) {
+            battle.applyScoreChange(player, scoreAmount);
+        }
 
         const randomCard = getRandomAvailableCard(player, cardSettings);
         gameState.turnPhase = 'MAIN';
+
+        let bonusLog = '';
+        if (scoreAmount > 0) {
+            bonusLog = ` (+${scoreAmount.toLocaleString()}点獲得)`;
+        } else if (scoreAmount < 0) {
+            bonusLog = ` (${scoreAmount.toLocaleString()}点)`;
+        }
 
         if (randomCard.id === 'time_bomb') {
             battle.applyScoreChange(player, 1000);
             player.timeBombTurns = 8;
             player.bombDrawnThisTurn = true;
-            const bonusLog = acceptBonus ? ' (+3,000点獲得)' : '';
 
             if (player.invincibleTurns > 0 || player.steroidTurns > 0) {
                 player.timeBombTurns = 0;
@@ -511,7 +523,6 @@ io.on('connection', (socket) => {
             }
         } else {
             player.hand.push(randomCard);
-            const bonusLog = acceptBonus ? ' (+3,000点獲得)' : '';
             socket.emit('syncGameState', getSyncPayload(`「${randomCard.name}」を獲得しました。${bonusLog}`));
             const otherLog = showOtherPlayersInfo ? `${player.name} がカードを1枚獲得しました。${bonusLog}` : '';
             socket.broadcast.emit('syncGameState', getSyncPayload(otherLog));

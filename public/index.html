@@ -15,7 +15,7 @@
     <!-- 画面内自動補正ツールチップ -->
     <div id="global-tooltip"></div>
 
-    <!-- 新規：常時表示スコアボードUI（画面左下固定・モーダル最前面） -->
+    <!-- 常時表示スコアボードUI（画面左下固定・モーダル最前面） -->
     <div id="global-scoreboard"></div>
 
     <!-- デバッグパネル -->
@@ -122,16 +122,29 @@
             </div>
         </div>
 
-        <!-- ボーナス選択モーダル -->
+        <!-- ターン開始ボーナス得点選択モーダル（更新） -->
         <div id="bonus-choice-modal" class="modal">
             <div class="modal-content" style="text-align:center; max-width:400px;">
                 <h3 style="margin-top:0; color:#f1c40f;">★ あなたのターンです</h3>
-                <p style="margin: 15px 0; font-size: 1.05em; line-height: 1.5;">ターン開始ボーナス (+3,000点) を獲得しますか？</p>
-                <div style="display:flex; flex-direction:column; gap:10px; margin-top:20px;">
-                    <button class="btn" style="background:#27ae60; padding:12px; font-weight:bold;"
-                        onclick="chooseBonusChoice(true)">ボーナスを受け取る (+3,000点 & カード獲得)</button>
-                    <button class="btn" style="background:#7f8c8d; padding:10px;"
-                        onclick="chooseBonusChoice(false)">受け取らない (カードのみ獲得)</button>
+                <p style="margin: 15px 0 10px 0; font-size: 1.05em;">獲得する得点を選択してください</p>
+
+                <div style="margin: 15px 0; background: #1a252f; padding: 12px; border-radius: 6px;">
+                    <select id="turn-bonus-score-select"
+                        style="width: 80%; padding: 8px 12px; font-size: 1.05em; font-weight: bold; background: #334155; color: #fff; border: 1.5px solid #f1c40f; border-radius: 6px; text-align: center;">
+                        <option value="3000" selected>+3,000点</option>
+                        <option value="2000">+2,000点</option>
+                        <option value="1000">+1,000点</option>
+                        <option value="0">0点</option>
+                        <option value="-1000">-1,000点</option>
+                        <option value="-2000">-2,000点</option>
+                        <option value="-3000">-3,000点</option>
+                    </select>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button class="btn"
+                        style="background:#27ae60; padding:12px 25px; font-size:1.1em; font-weight:bold; width:100%; margin:0;"
+                        onclick="chooseBonusChoice()">獲得する</button>
                 </div>
             </div>
         </div>
