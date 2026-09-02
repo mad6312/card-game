@@ -10,7 +10,7 @@ const { applyScoreChange } = require('./common');
  * @param {Object} gameState ゲーム状態
  * @param {Object} victim 被害者プレイヤーオブジェクト
  * @param {Object} options オプション { allowSteroid: boolean, isImmuneToRound1CardEffect: Function, broadcastGameState: Function }
- * @returns {Object|null} 発動結果 { triggered: true, cardId: string, cardName: string, stateName: string, canBlock: boolean, hadDefense: boolean, logMsg: string } または null
+ * @returns {Object|null} 発動結果 { triggered: true, cardId: string, cardName: string, stateName: string, canBlock: boolean, hadDefense: boolean, logMsg: string, resolveDarkMatterPenalty: Function|null } または null
  */
 function tryAutoTriggerDefense(gameState, victim, options = {}) {
     if (!victim || !victim.hand || victim.hand.length === 0) return null;
@@ -74,7 +74,8 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
     const cardObj = victim.hand.splice(chosenIdx, 1)[0];
     let stateName = '';
     let logMsg = '';
-    let canBlock = true; // この攻撃を防ぎきれるか
+    let canBlock = true;
+    let resolveDarkMatterPenalty = null;
 
     if (chosenCardId === 'steroid') {
         victim.steroidTurns = 4;
@@ -86,7 +87,6 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
             canBlock = true;
             logMsg = `${victim.name} の手札から「ステロイド」が自動発動！ (防御カード全破棄＆ステロイド状態付与)`;
         } else {
-            // ステロイドでは無効化できない攻撃に対する無駄消費
             canBlock = false;
             logMsg = `${victim.name} の手札から「ステロイド」が自動使用されましたが、この効果は無効化できません！ (ステロイド状態のみ付与)`;
         }
@@ -111,53 +111,122 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
         canBlock = true;
         logMsg = `${victim.name} の手札から「ダークマター」が自動発動！ +5,000点獲得＆無敵状態付与！ (防御カード全破棄)`;
 
-        // 同点・逆転相手への50%ペナルティ判定
-        const penalizedNames = [];
-        Object.values(gameState.players).forEach(opponent => {
-            if (opponent.id === victim.id || isImmuneToRound1(opponent.id, victim.id)) return;
+        // 遅延ペナルティ解決関数
+        resolveDarkMatterPenalty = (currentGameState, io) => {
+            const penalizedNames = [];
+            const defendersList = [];
+            const victimsData = [];
 
-            const isConditionA = (opponent.score === prevScore);
-            const isConditionB = (opponent.score > prevScore && newScore >= opponent.score);
+            Object.values(currentGameState.players).forEach(opponent => {
+                if (opponent.id === victim.id || isImmuneToRound1(opponent.id, victim.id)) return;
 
-            if (isConditionA || isConditionB) {
-                const isAlreadyOpInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
-                const isAlreadyOpImmune = opponent.immunityCount && opponent.immunityCount > 0;
-                if (isAlreadyOpInvincible || isAlreadyOpImmune) return;
+                const isConditionA = (opponent.score === prevScore);
+                const isConditionB = (opponent.score > prevScore && newScore >= opponent.score);
 
-                // 1. まず50%の不発判定を行う（不発ならペナルティが発生しないため相手の手札温存）
-                const isSuccess = Math.random() < 0.5;
-                if (!isSuccess) {
-                    penalizedNames.push(`${opponent.name}(不発)`);
-                    return;
+                if (isConditionA || isConditionB) {
+                    const isAlreadyOpImmune = opponent.immunityCount && opponent.immunityCount > 0;
+                    // 選択不可状態のプレイヤーはカットイン演出自体から除外
+                    if (isAlreadyOpImmune) {
+                        penalizedNames.push(`${opponent.name}(選択不可ガード)`);
+                        return;
+                    }
+
+                    defendersList.push({
+                        id: opponent.id,
+                        name: opponent.name,
+                        avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png'
+                    });
+
+                    const isAlreadyOpInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
+                    if (isAlreadyOpInvincible) {
+                        victimsData.push({
+                            id: opponent.id,
+                            result: 'PROTECTED',
+                            protectText: '無敵！',
+                            hasDefenseCard: !!opponent.defenseCard
+                        });
+                        penalizedNames.push(`${opponent.name}(無敵ガード)`);
+                        return;
+                    }
+
+                    // 1. 50%不発判定（不発なら相手の手札温存）
+                    const isSuccess = Math.random() < 0.5;
+                    if (!isSuccess) {
+                        victimsData.push({
+                            id: opponent.id,
+                            result: 'MISS',
+                            hasDefenseCard: !!opponent.defenseCard
+                        });
+                        penalizedNames.push(`${opponent.name}(不発)`);
+                        return;
+                    }
+
+                    // 2. ペナルティ判定成立時：相手の手札カウンター判定（ステロイドは無効化不可）
+                    const autoRes = tryAutoTriggerDefense(currentGameState, opponent, {
+                        allowSteroid: false,
+                        isImmuneToRound1CardEffect: isImmuneToRound1,
+                        broadcastGameState: broadcastGameState
+                    });
+
+                    if (autoRes && autoRes.canBlock) {
+                        victimsData.push({
+                            id: opponent.id,
+                            result: 'PROTECTED',
+                            protectText: autoRes.stateName,
+                            hasDefenseCard: autoRes.hadDefense
+                        });
+                        penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
+                        return;
+                    }
+
+                    // 3. ペナルティ効果の実行
+                    const hadDefOp = autoRes ? autoRes.hadDefense : !!opponent.defenseCard;
+                    opponent.hand = [];
+                    opponent.defenseCard = null;
+                    applyScoreChange(opponent, -3000);
+                    opponent.immunityCount = 2;
+
+                    const steroidNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
+                    penalizedNames.push(`${opponent.name}${steroidNotice}`);
+
+                    victimsData.push({
+                        id: opponent.id,
+                        result: 'HIT',
+                        hasDefenseCard: hadDefOp
+                    });
                 }
+            });
 
-                // 2. ペナルティ判定成立時：【割り込み】相手の手札カウンター判定（ステロイドでは無効化不可）
-                const autoRes = tryAutoTriggerDefense(gameState, opponent, {
-                    allowSteroid: false,
-                    isImmuneToRound1CardEffect: isImmuneToRound1,
-                    broadcastGameState: broadcastGameState
-                });
-
-                // 無敵アーマー・ダークマター等で完全無効化できた場合
-                if (autoRes && autoRes.canBlock) {
-                    penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
-                    return;
-                }
-
-                // 3. ペナルティ効果の実行（ステロイド無駄消費またはカウンターなし）
-                opponent.hand = [];
-                opponent.defenseCard = null;
-                applyScoreChange(opponent, -3000);
-                opponent.immunityCount = 2;
-
-                const steroidWasteNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
-                penalizedNames.push(`${opponent.name}${steroidWasteNotice}`);
+            let penaltyLogSuffix = '';
+            if (penalizedNames.length > 0) {
+                penaltyLogSuffix = ` (ダークマターペナルティ対象: ${penalizedNames.join(', ')})`;
             }
-        });
 
-        if (penalizedNames.length > 0) {
-            logMsg += ` ペナルティ対象: ${penalizedNames.join(', ')}`;
-        }
+            let darkMatterCutinData = null;
+            if (defendersList.length > 0) {
+                darkMatterCutinData = {
+                    attacker: {
+                        id: victim.id,
+                        name: victim.name,
+                        avatar: victim.avatar ? `/images/avatars/${victim.avatar}.png` : '/images/avatars/avatar_default.png'
+                    },
+                    card: {
+                        id: 'dark_matter',
+                        name: 'ダークマター',
+                        image: '/images/dark_matter.png'
+                    },
+                    defenders: defendersList,
+                    darkMatterAction: {
+                        victims: victimsData
+                    }
+                };
+            }
+
+            return {
+                penaltyLogSuffix,
+                darkMatterCutinData
+            };
+        };
     }
 
     return {
@@ -167,7 +236,8 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
         stateName: stateName,
         canBlock: canBlock,
         hadDefense: hadDefense,
-        logMsg: logMsg
+        logMsg: logMsg,
+        resolveDarkMatterPenalty: resolveDarkMatterPenalty
     };
 }
 

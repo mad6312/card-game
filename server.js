@@ -231,7 +231,7 @@ function proceedToNextTurn() {
             if (p.invincibleTurns === 0) {
                 p.invincibleSource = null;
                 p.armorRevealed = false;
-                const msg = battle.handleBuffExpire(gameState, p, 'ARMOR', isImmuneToRound1CardEffect);
+                const msg = battle.handleBuffExpire(gameState, p, 'ARMOR', isImmuneToRound1CardEffect, io);
                 if (msg) expireLogs.push(msg);
                 hasScoreChangeOnExpire = true;
             }
@@ -240,7 +240,7 @@ function proceedToNextTurn() {
             p.steroidTurns -= 1;
             if (p.steroidTurns === 0) {
                 p.steroidRevealed = false;
-                const msg = battle.handleBuffExpire(gameState, p, 'STERIOD', isImmuneToRound1CardEffect);
+                const msg = battle.handleBuffExpire(gameState, p, 'STERIOD', isImmuneToRound1CardEffect, io);
                 if (msg) expireLogs.push(msg);
                 hasScoreChangeOnExpire = true;
             }
@@ -259,8 +259,18 @@ function proceedToNextTurn() {
                     });
 
                     if (autoRes) {
-                        p.timeBombTurns = 0; // 自動発動した無敵/ステロイドにより消滅
-                        expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発寸前に手札から「${autoRes.cardName}」が自動発動！ 無敵/ステロイド状態になり爆発を無効化しました！\n(${autoRes.logMsg})`);
+                        p.timeBombTurns = 0;
+                        let dmLog = '';
+                        if (autoRes.resolveDarkMatterPenalty) {
+                            const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                            if (dmRes) {
+                                if (dmRes.penaltyLogSuffix) dmLog = dmRes.penaltyLogSuffix;
+                                if (dmRes.darkMatterCutinData && io) {
+                                    io.emit('playAttackCutin', dmRes.darkMatterCutinData);
+                                }
+                            }
+                        }
+                        expireLogs.push(`💣 ${p.name} の「時限爆弾」が爆発寸前に手札から「${autoRes.cardName}」が自動発動！ 無敵/ステロイド状態になり爆発を無効化しました！\n(${autoRes.logMsg})${dmLog}`);
                         if (autoRes.cardId === 'dark_matter') hasScoreChangeOnExpire = true;
                     } else {
                         battle.applyScoreChange(p, -6000);
@@ -626,7 +636,7 @@ io.on('connection', (socket) => {
             player.playedDarkMatterThisTurn = true;
             player.hand.splice(cardIndex, 1);
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
-            battle.executeDarkMatter(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect);
+            battle.executeDarkMatter(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
             return;
         }
 

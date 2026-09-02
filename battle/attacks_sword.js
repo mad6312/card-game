@@ -65,6 +65,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
         if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
 
         const cutinResults = [];
+        let pendingDarkMatterCutin = null;
 
         for (let i = 0; i < attackQueue.length; i++) {
             if (stoppedEarly) break;
@@ -97,7 +98,6 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
                 break;
             }
 
-            // 手札自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -107,6 +107,9 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
             if (autoRes) {
                 cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
                 finalLog = `${attacker.name} の「木の剣」攻撃！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃終了）\n(${autoRes.logMsg})`;
+                if (autoRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = autoRes.darkMatterCutinData;
+                }
                 stoppedEarly = true;
                 break;
             }
@@ -141,6 +144,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
         }
 
         if (io) {
+            // 1. 元の攻撃カットイン
             io.emit('playAttackCutin', {
                 attacker: {
                     id: attacker.id,
@@ -155,9 +159,15 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
                 defenders: defendersList,
                 results: cutinResults
             });
+
+            // 2. 自動発動したダークマターのカットイン
+            if (pendingDarkMatterCutin) {
+                io.emit('playAttackCutin', pendingDarkMatterCutin);
+            }
         }
 
-        const animDuration = Math.max(1200, cutinResults.length * 600 + 800);
+        const baseDuration = Math.max(1200, cutinResults.length * 600 + 800);
+        const animDuration = pendingDarkMatterCutin ? (baseDuration + 1400) : baseDuration;
         setTimeout(() => {
             broadcastGameState(finalLog);
         }, animDuration);
@@ -184,6 +194,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
     let cutinRes = 'HIT';
     let defImg = null;
     let finalLog = '';
+    let pendingDarkMatterCutin = null;
 
     if (!isHit) {
         cutinRes = 'MISS';
@@ -203,7 +214,6 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
         finalLog = msg;
         cutinRes = 'BLOCK';
     } else {
-        // 手札自動発動チェック
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -213,6 +223,9 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
         if (autoRes) {
             cutinRes = autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoRes.logMsg})`;
+            if (autoRes.darkMatterCutinData) {
+                pendingDarkMatterCutin = autoRes.darkMatterCutinData;
+            }
         } else if (target.invincibleTurns && target.invincibleTurns > 0) {
             if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`;
@@ -231,6 +244,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
     }
 
     if (io) {
+        // 1. 元の攻撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -249,11 +263,17 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
             }],
             results: [{ targetId: target.id, result: cutinRes, defCardImage: defImg }]
         });
+
+        // 2. 自動発動したダークマターのカットイン
+        if (pendingDarkMatterCutin) {
+            io.emit('playAttackCutin', pendingDarkMatterCutin);
+        }
     }
 
+    const duration = pendingDarkMatterCutin ? 2800 : 1400;
     setTimeout(() => {
         broadcastGameState(finalLog);
-    }, 1400);
+    }, duration);
 }
 
 /**
@@ -279,6 +299,7 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
     const rounds = [];
     const logs = [];
     let actualAttacksDone = 0;
+    let pendingDarkMatterCutin = null;
 
     for (let r = 0; r < maxAttacks; r++) {
         if (cardObj.usesLeft <= 0) break;
@@ -321,7 +342,6 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
             });
             continue;
         } else {
-            // 手札自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -331,6 +351,9 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
             if (autoRes) {
                 cutinRes = autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
                 logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
+                if (autoRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = autoRes.darkMatterCutinData;
+                }
                 rounds.push({
                     roundNumber: actualAttacksDone,
                     results: [{ targetId: target.id, result: cutinRes }]
@@ -374,6 +397,7 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
     }
 
     if (io) {
+        // 1. 元の連撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -392,9 +416,15 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
             }],
             rounds: rounds
         });
+
+        // 2. 自動発動したダークマターのカットイン
+        if (pendingDarkMatterCutin) {
+            io.emit('playAttackCutin', pendingDarkMatterCutin);
+        }
     }
 
-    const totalDuration = Math.max(1500, rounds.length * 1300 + 600);
+    const baseDuration = Math.max(1500, rounds.length * 1300 + 600);
+    const totalDuration = pendingDarkMatterCutin ? (baseDuration + 1400) : baseDuration;
     setTimeout(() => {
         if (logs.length > 0) {
             broadcastGameState(logs.join('\n'));
@@ -447,6 +477,7 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
     let actualAttacksDone = 0;
     let baseHitRate = 0.5;
     if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
+    let pendingDarkMatterCutin = null;
 
     for (let r = 0; r < maxAttacks; r++) {
         if (cardObj.usesLeft <= 0 || stoppedByInvincible) break;
@@ -514,7 +545,6 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
                 break;
             }
 
-            // 手札自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -524,6 +554,9 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
             if (autoRes) {
                 currentRoundResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
                 logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
+                if (autoRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = autoRes.darkMatterCutinData;
+                }
                 stoppedByInvincible = true;
                 hitInThisRound = true;
                 break;
@@ -567,6 +600,7 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
     }
 
     if (io) {
+        // 1. 元の連撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -581,9 +615,15 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
             defenders: defendersList,
             rounds: rounds
         });
+
+        // 2. 自動発動したダークマターのカットイン
+        if (pendingDarkMatterCutin) {
+            io.emit('playAttackCutin', pendingDarkMatterCutin);
+        }
     }
 
-    const totalDuration = Math.max(1500, rounds.length * 1300 + 600);
+    const baseDuration = Math.max(1500, rounds.length * 1300 + 600);
+    const totalDuration = pendingDarkMatterCutin ? (baseDuration + 1400) : baseDuration;
     setTimeout(() => {
         if (logs.length > 0) {
             broadcastGameState(logs.join('\n'));
@@ -615,13 +655,13 @@ function executeStandardAttack(gameState, attackerId, targetId, cardId, io, broa
     let cutinRes = 'MISS';
     let defImg = null;
     let autoTriggerRes = null;
+    let pendingDarkMatterCutin = null;
 
     if (isHit) {
         if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
             cutinRes = 'BLOCK';
             defImg = target.defenseCard.card.image || `/images/${cardId}.png`;
         } else {
-            // 手札自動発動チェック
             autoTriggerRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -630,6 +670,9 @@ function executeStandardAttack(gameState, attackerId, targetId, cardId, io, broa
 
             if (autoTriggerRes) {
                 cutinRes = autoTriggerRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
+                if (autoTriggerRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = autoTriggerRes.darkMatterCutinData;
+                }
             } else if (target.invincibleTurns && target.invincibleTurns > 0) {
                 cutinRes = 'INVINCIBLE';
             } else if (target.steroidTurns && target.steroidTurns > 0) {
@@ -641,6 +684,7 @@ function executeStandardAttack(gameState, attackerId, targetId, cardId, io, broa
     }
 
     if (io) {
+        // 1. 元の攻撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -659,6 +703,11 @@ function executeStandardAttack(gameState, attackerId, targetId, cardId, io, broa
             }],
             results: [{ targetId: target.id, result: cutinRes, defCardImage: defImg }]
         });
+
+        // 2. 自動発動したダークマターのカットイン
+        if (pendingDarkMatterCutin) {
+            io.emit('playAttackCutin', pendingDarkMatterCutin);
+        }
     }
 
     function finalizeStandardAttack() {
@@ -705,7 +754,8 @@ function executeStandardAttack(gameState, attackerId, targetId, cardId, io, broa
         broadcastGameState(logPrefix + rateText + `${blockedNotice} 得点-3,000点！ (${target.name}は選択不可状態になりました)`);
     }
 
-    setTimeout(finalizeStandardAttack, 1400);
+    const duration = pendingDarkMatterCutin ? 2800 : 1400;
+    setTimeout(finalizeStandardAttack, duration);
 }
 
 module.exports = {

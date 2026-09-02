@@ -1,6 +1,6 @@
 /**
  * 攻撃カットインアニメーション制御モジュール (attackAnimation.js)
- * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）に対応
+ * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）、闇の広域爆発（ダークマター）に対応
  */
 
 (function (window) {
@@ -33,10 +33,11 @@
         const isGunAttack = (card.id === 'shotgun');
         const isGrenadeAttack = (card.id === 'grenade');
         const isDiamondSword = (card.id === 'diamond_sword');
+        const isDarkMatter = (card.id === 'dark_matter');
 
         const rounds = data.rounds || (data.results ? [{ roundNumber: 1, results: data.results }] : []);
 
-        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction) {
+        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction && !data.darkMatterAction) {
             if (onComplete) onComplete();
             return;
         }
@@ -51,13 +52,15 @@
                     <div class="cutin-invincible-aura" id="cutin-aura-attacker"></div>
                 </div>
                 <div style="position:relative; display:inline-block;">
-                    <img src="${card.image || '/images/wood_shield.png'}" class="cutin-card-img-attacker" alt="${card.name}">
+                    <img src="${card.image || '/images/dark_matter.png'}" class="cutin-card-img-attacker" alt="${card.name}">
                     ${isGunAttack ? '<div class="cutin-muzzle-flash" id="cutin-muzzle-flash"></div>' : ''}
                 </div>
             </div>
             ${isGunAttack ? '<div class="cutin-bullet-tracer" id="cutin-bullet"></div>' : ''}
             ${isGrenadeAttack ? '<img src="/images/grenade_bomb.png" class="cutin-grenade-bomb" id="cutin-grenade" alt="手榴弾">' : ''}
             ${isGrenadeAttack ? '<div class="cutin-explosion-blast" id="cutin-explosion"></div>' : ''}
+            ${isDarkMatter ? '<img src="/images/dark_matter_orb.png" class="cutin-dark-matter-orb" id="cutin-dark-matter-orb" alt="ダークマター" onerror="this.src=\'/images/dark_matter.png\'">' : ''}
+            ${isDarkMatter ? '<div class="cutin-dark-matter-blast" id="cutin-dark-matter-blast"></div>' : ''}
             ${isDiamondSword ? '<img src="/images/diamond_sword_weapon.png" class="cutin-diamond-sword-weapon" id="cutin-diamond-sword" alt="ダイヤの剣" onerror="this.src=\'/images/diamond_sword.png\'">' : ''}
             ${isDiamondSword ? '<div class="cutin-crystal-explosion-blast" id="cutin-crystal-explosion"></div>' : ''}
             <div class="cutin-defenders-group ${isDiamondSword ? 'center-aligned' : ''}" id="cutin-defenders-group"></div>
@@ -91,10 +94,108 @@
         const bulletEl = document.getElementById('cutin-bullet');
         const grenadeEl = document.getElementById('cutin-grenade');
         const explosionEl = document.getElementById('cutin-explosion');
+        const darkMatterOrbEl = document.getElementById('cutin-dark-matter-orb');
+        const darkMatterBlastEl = document.getElementById('cutin-dark-matter-blast');
         const diamondSwordEl = document.getElementById('cutin-diamond-sword');
         const crystalExplosionEl = document.getElementById('cutin-crystal-explosion');
 
         layer.classList.add('active');
+
+        // ==========================================
+        // 【ダークマター専用：闇のオーブ投擲＆広域大爆発】
+        // ==========================================
+        if (isDarkMatter && data.darkMatterAction) {
+            const action = data.darkMatterAction;
+            const victims = action.victims || [];
+
+            setTimeout(() => {
+                const stageRect = stage.getBoundingClientRect();
+                const defendersGroupRect = defendersGroup.getBoundingClientRect();
+
+                const targetCenterX = (defendersGroupRect.left - stageRect.left) + (defendersGroupRect.width / 2);
+                const targetCenterY = (defendersGroupRect.top - stageRect.top) + (defendersGroupRect.height / 2);
+
+                if (darkMatterOrbEl) {
+                    darkMatterOrbEl.classList.add('active');
+                    darkMatterOrbEl.style.left = '220px';
+                    darkMatterOrbEl.style.top = '50%';
+                    darkMatterOrbEl.style.transform = 'translateY(-50%) rotate(0deg) scale(0.6)';
+
+                    darkMatterOrbEl.style.transition = 'left 0.45s linear, top 0.45s cubic-bezier(0.2, 0.8, 0.4, 1), transform 0.45s linear';
+                    void darkMatterOrbEl.offsetWidth;
+                    darkMatterOrbEl.style.left = `${targetCenterX - 37}px`;
+                    darkMatterOrbEl.style.top = `${targetCenterY - 37}px`;
+                    darkMatterOrbEl.style.transform = 'translateY(-50%) rotate(720deg) scale(1.1)';
+                }
+
+                setTimeout(() => {
+                    if (darkMatterOrbEl) darkMatterOrbEl.classList.remove('active');
+
+                    if (darkMatterBlastEl) {
+                        darkMatterBlastEl.style.left = `${targetCenterX}px`;
+                        darkMatterBlastEl.style.top = `${targetCenterY}px`;
+                        darkMatterBlastEl.classList.add('explode');
+                    }
+
+                    if (flash) {
+                        flash.classList.remove('flash');
+                        void flash.offsetWidth;
+                        flash.classList.add('flash');
+                    }
+
+                    const totalDefs = defenders.length;
+
+                    victims.forEach((v) => {
+                        const vUnit = defenderUnitMap[v.id];
+                        if (!vUnit) return;
+
+                        const vBadge = document.getElementById(`cutin-badge-${v.id}`);
+                        const vCard = document.getElementById(`cutin-def-card-${v.id}`);
+                        const vAura = document.getElementById(`cutin-aura-${v.id}`);
+                        const defIdx = Number(vUnit.getAttribute('data-index') || 0);
+
+                        let blowClass = 'blow-straight-up';
+                        if (totalDefs === 1) {
+                            blowClass = 'blow-straight-up';
+                        } else if (totalDefs === 2) {
+                            blowClass = (defIdx === 0) ? 'blow-left-up' : 'blow-right-up';
+                        } else {
+                            if (defIdx === 0) blowClass = 'blow-left-up';
+                            else if (defIdx === totalDefs - 1) blowClass = 'blow-right-up';
+                            else blowClass = 'blow-straight-up';
+                        }
+
+                        if (v.result === 'PROTECTED') {
+                            if (vAura) vAura.classList.add('show');
+                            if (vBadge) {
+                                vBadge.innerText = v.protectText || '無敵！';
+                                vBadge.className = 'cutin-result-badge badge-invincible show';
+                            }
+                        } else if (v.result === 'MISS') {
+                            // 50%不発
+                            if (vBadge) {
+                                vBadge.innerText = '回避！';
+                                vBadge.className = 'cutin-result-badge badge-dodge show';
+                            }
+                            vUnit.classList.add('dodge-action');
+                        } else {
+                            // 命中ヒット（ステロイド・防御カード所持含む）
+                            if (vCard && v.hasDefenseCard) {
+                                vCard.classList.add('broken');
+                            }
+                            if (vBadge) {
+                                vBadge.innerText = '命中！';
+                                vBadge.className = 'cutin-result-badge badge-hit show';
+                            }
+                            vUnit.classList.add(blowClass);
+                        }
+                    });
+
+                    setTimeout(finishAnimation, 1050);
+                }, 450);
+            }, 300);
+            return;
+        }
 
         // ==========================================
         // 【ダイヤの剣専用：天空刺突＆クリスタル大爆発】
@@ -146,7 +247,6 @@
                         const vAura = document.getElementById(`cutin-aura-${v.id}`);
                         const defIdx = Number(vUnit.getAttribute('data-index') || 0);
 
-                        // 中央からの放射状吹き飛び方向
                         let blowClass = 'blow-straight-up';
                         if (totalDefs === 1) {
                             blowClass = 'blow-straight-up';
@@ -170,14 +270,13 @@
                                 vBadge.className = 'cutin-result-badge badge-invincible show';
                             }
                         } else if (v.result === 'DODGE') {
-                            // お守り身代わり回避
+                            if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
                             if (vBadge) {
                                 vBadge.innerText = '回避！';
                                 vBadge.className = 'cutin-result-badge badge-dodge show';
                             }
                             vUnit.classList.add('dodge-action');
                         } else {
-                            // 通常被弾（防御カードがあっても破棄されつつ「命中！」）
                             if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
                             if (vBadge) {
                                 vBadge.innerText = '命中！';
@@ -315,9 +414,7 @@
                             }
 
                             if (v.result === 'PROTECTED') {
-                                if (vCard && v.hasDefenseCard) {
-                                    vCard.classList.add('broken');
-                                }
+                                if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
                                 if (vAura) vAura.classList.add('show');
                                 if (vBadge) {
                                     vBadge.innerText = v.protectText || '無敵！';

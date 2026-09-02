@@ -17,13 +17,17 @@ function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState)
     if (targets.length === 0) return;
 
     const counterLogs = [];
+    const pendingDarkMatterResolvers = [];
 
     targets.forEach(target => {
-        // 手札からの緊急自動発動チェック
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             broadcastGameState: broadcastGameState
         });
+
+        if (autoRes && autoRes.resolveDarkMatterPenalty) {
+            pendingDarkMatterResolvers.push(autoRes.resolveDarkMatterPenalty);
+        }
 
         const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
         const isSteroid = target.steroidTurns && target.steroidTurns > 0;
@@ -50,6 +54,14 @@ function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState)
         }
     });
 
+    // カウンター完了後にダークマターペナルティを解決
+    pendingDarkMatterResolvers.forEach(resolver => {
+        const res = resolver(gameState, null);
+        if (res && res.penaltyLogSuffix) {
+            counterLogs.push(res.penaltyLogSuffix);
+        }
+    });
+
     broadcastGameState(`💥 ${defender.name} の「グレネード」カウンター発動！ 反撃対象: ${counterLogs.join(' / ')}`);
 }
 
@@ -73,12 +85,10 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
     let logPrefix = `${attacker.name} が ${target.name} に「グレネード」で攻撃！ `;
     const isHit = Math.random() < baseHitRate;
 
-    // スプラッシュ被災者（ターゲットと±1,000点以内）の抽出
     const centerScore = target.score;
     const allPlayers = Object.values(gameState.players);
     const splashOtherPlayers = allPlayers.filter(p => p.id !== attackerId && p.id !== target.id && Math.abs(p.score - centerScore) <= 1000);
 
-    // 画面上の右側整列リストの構築
     const defendersList = [];
     if (splashOtherPlayers.length === 0) {
         defendersList.push({ id: target.id, name: target.name, avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png' });
@@ -93,22 +103,27 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
 
     const victimsData = [];
     const affectedLogs = [];
+    const pendingDarkMatterResolvers = [];
 
     if (isHit) {
         const allVictims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
 
+        // 1. まずグレネードの直撃＆全スプラッシュ被弾処理を完全に実行
         allVictims.forEach(victim => {
             if (victim.id !== attackerId && isImmuneToRound1CardEffect(victim.id, attackerId)) {
                 affectedLogs.push(`${victim.name}(1巡目効果無効)`);
                 return;
             }
 
-            // 手札からの緊急自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, victim, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
                 broadcastGameState: broadcastGameState
             });
+
+            if (autoRes && autoRes.resolveDarkMatterPenalty) {
+                pendingDarkMatterResolvers.push(autoRes.resolveDarkMatterPenalty);
+            }
 
             const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
             const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
@@ -154,6 +169,52 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
                 });
             }
         });
+
+        // 2. グレネード処理が完全に完了した後に、遅延されていたダークマターペナルティを解決
+        const pendingDarkMatterCutins = [];
+        pendingDarkMatterResolvers.forEach(resolver => {
+            const res = resolver(gameState, io);
+            if (res) {
+                if (res.penaltyLogSuffix) affectedLogs.push(res.penaltyLogSuffix);
+                if (res.darkMatterCutinData) pendingDarkMatterCutins.push(res.darkMatterCutinData);
+            }
+        });
+
+        if (io) {
+            // 1. 元のグレネードカットイン
+            io.emit('playAttackCutin', {
+                attacker: {
+                    id: attacker.id,
+                    name: attacker.name,
+                    avatar: attacker.avatar ? `/images/avatars/${attacker.avatar}.png` : '/images/avatars/avatar_default.png'
+                },
+                card: {
+                    id: 'grenade',
+                    name: 'グレネード',
+                    image: '/images/grenade.png'
+                },
+                defenders: defendersList,
+                grenadeAction: {
+                    steps: [{
+                        primaryTargetId: target.id,
+                        isMiss: !isHit,
+                        victims: victimsData
+                    }]
+                }
+            });
+
+            // 2. 自動発動したダークマターのカットイン
+            pendingDarkMatterCutins.forEach(dmCutin => {
+                io.emit('playAttackCutin', dmCutin);
+            });
+        }
+
+        const totalDuration = pendingDarkMatterCutins.length > 0 ? (1600 + 1400 * pendingDarkMatterCutins.length) : 1600;
+        setTimeout(() => {
+            let penetrateMsg = target.defenseCard ? ` (相手の防御カードを貫通！)` : '';
+            broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 命中着弾！${penetrateMsg}\n💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`);
+        }, totalDuration);
+        return;
     }
 
     if (io) {
@@ -172,21 +233,16 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
             grenadeAction: {
                 steps: [{
                     primaryTargetId: target.id,
-                    isMiss: !isHit,
-                    victims: victimsData
+                    isMiss: true,
+                    victims: []
                 }]
             }
         });
     }
 
     setTimeout(() => {
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
-        } else {
-            let penetrateMsg = target.defenseCard ? ` (相手の防御カードを貫通！)` : '';
-            broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 命中着弾！${penetrateMsg}\n💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`);
-        }
-    }, isHit ? 1600 : 1200);
+        broadcastGameState(logPrefix + `(命中率:${baseHitRate * 100}%) 攻撃は外れた！（ミス）`);
+    }, 1200);
 }
 
 // グレネードグループ攻撃（下位全員：順次投擲＆同時大爆発カットイン完全同期）
@@ -239,6 +295,7 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
     const steps = [];
     let finalLog = '';
     let stopped = false;
+    const pendingDarkMatterResolvers = [];
 
     for (let i = 0; i < attackQueue.length; i++) {
         if (stopped) break;
@@ -257,24 +314,27 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
             continue;
         }
 
-        // 命中・爆発確定
         const centerScore = target.score;
         const allVictims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
         const victimsData = [];
         const affectedLogs = [];
 
+        // 1. まずグレネードの全被弾処理を実行
         allVictims.forEach(victim => {
             if (victim.id !== attackerId && isImmuneToRound1CardEffect(victim.id, attackerId)) {
                 affectedLogs.push(`${victim.name}(1巡目効果無効)`);
                 return;
             }
 
-            // 手札からの緊急自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, victim, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
                 broadcastGameState: broadcastGameState
             });
+
+            if (autoRes && autoRes.resolveDarkMatterPenalty) {
+                pendingDarkMatterResolvers.push(autoRes.resolveDarkMatterPenalty);
+            }
 
             const isInvincible = victim.invincibleTurns && victim.invincibleTurns > 0;
             const isSteroid = victim.steroidTurns && victim.steroidTurns > 0;
@@ -321,6 +381,16 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
             }
         });
 
+        // 2. グレネード処理完了後にダークマターペナルティを遅延解決
+        const pendingDarkMatterCutins = [];
+        pendingDarkMatterResolvers.forEach(resolver => {
+            const res = resolver(gameState, io);
+            if (res) {
+                if (res.penaltyLogSuffix) affectedLogs.push(res.penaltyLogSuffix);
+                if (res.darkMatterCutinData) pendingDarkMatterCutins.push(res.darkMatterCutinData);
+            }
+        });
+
         steps.push({
             primaryTargetId: target.id,
             isMiss: false,
@@ -330,7 +400,36 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
         let penetrateMsg = target.defenseCard ? ` (相手の防御カードを貫通！)` : '';
         finalLog = `${attacker.name} の「グレネード」攻撃 (対象: ${target.name})！ (命中率:${Math.round(baseHitRate * 100)}%) 命中着弾！${penetrateMsg}\n💥 グレネード爆発！ 誘爆対象: ${affectedLogs.join(' / ')}`;
         stopped = true;
-        break;
+
+        if (io) {
+            io.emit('playAttackCutin', {
+                attacker: {
+                    id: attacker.id,
+                    name: attacker.name,
+                    avatar: attacker.avatar ? `/images/avatars/${attacker.avatar}.png` : '/images/avatars/avatar_default.png'
+                },
+                card: {
+                    id: 'grenade',
+                    name: 'グレネード',
+                    image: '/images/grenade.png'
+                },
+                defenders: defendersList,
+                grenadeAction: {
+                    steps: steps
+                }
+            });
+
+            pendingDarkMatterCutins.forEach(dmCutin => {
+                io.emit('playAttackCutin', dmCutin);
+            });
+        }
+
+        const baseDuration = Math.max(1200, steps.length * 600 + 1000);
+        const animDuration = pendingDarkMatterCutins.length > 0 ? (baseDuration + 1400 * pendingDarkMatterCutins.length) : baseDuration;
+        setTimeout(() => {
+            broadcastGameState(finalLog);
+        }, animDuration);
+        return;
     }
 
     if (!finalLog) {
@@ -413,6 +512,7 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
         if (attacker.darknessTurns && attacker.darknessTurns > 0) baseHitRate = 0.25;
 
         const cutinResults = [];
+        let pendingDarkMatterCutin = null;
 
         for (let i = 0; i < attackQueue.length; i++) {
             if (stoppedEarly) break;
@@ -429,7 +529,6 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
 
             let penetrateMsg = target.defenseCard ? ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)` : '';
 
-            // 手札からの緊急自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -439,6 +538,12 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
             if (autoRes) {
                 cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
                 finalLog = `${attacker.name} の「ショットガン」攻撃 (対象: ${target.name})！ 命中！${penetrateMsg} しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃終了）\n(${autoRes.logMsg})`;
+                if (autoRes.resolveDarkMatterPenalty) {
+                    const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                    if (dmRes && dmRes.darkMatterCutinData) {
+                        pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                    }
+                }
                 stoppedEarly = true;
                 break;
             }
@@ -492,9 +597,14 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
                 defenders: defendersList,
                 results: cutinResults
             });
+
+            if (pendingDarkMatterCutin) {
+                io.emit('playAttackCutin', pendingDarkMatterCutin);
+            }
         }
 
-        const animDuration = Math.max(1200, cutinResults.length * 600 + 800);
+        const baseDuration = Math.max(1200, cutinResults.length * 600 + 800);
+        const animDuration = pendingDarkMatterCutin ? (baseDuration + 1400) : baseDuration;
         setTimeout(() => {
             broadcastGameState(finalLog);
         }, animDuration);
@@ -521,6 +631,7 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
     let cutinRes = 'HIT';
     let defImg = null;
     let finalLog = '';
+    let pendingDarkMatterCutin = null;
 
     if (!isHit) {
         cutinRes = 'MISS';
@@ -528,7 +639,6 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
     } else {
         let penetrateMsg = target.defenseCard ? ` (相手の防御カード「${target.defenseCard.card.name}」を貫通！)` : '';
 
-        // 手札からの緊急自動発動チェック
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -538,6 +648,12 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
         if (autoRes) {
             cutinRes = autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoRes.logMsg})`;
+            if (autoRes.resolveDarkMatterPenalty) {
+                const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                if (dmRes && dmRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                }
+            }
         } else if (target.invincibleTurns && target.invincibleTurns > 0) {
             if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`;
@@ -579,11 +695,16 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
             }],
             results: [{ targetId: target.id, result: cutinRes, defCardImage: defImg }]
         });
+
+        if (pendingDarkMatterCutin) {
+            io.emit('playAttackCutin', pendingDarkMatterCutin);
+        }
     }
 
+    const duration = pendingDarkMatterCutin ? 2800 : 1400;
     setTimeout(() => {
         broadcastGameState(finalLog);
-    }, 1400);
+    }, duration);
 }
 
 module.exports = {

@@ -42,7 +42,9 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
 
     const victimsData = [];
     const affectedLogs = [];
+    const pendingDarkMatterResolvers = [];
 
+    // 1. まずダイヤの剣の全被弾処理を実行
     targetPlayers.forEach(target => {
         if (target.id !== casterSocketId && isImmuneToRound1CardEffect(target.id, casterSocketId)) {
             affectedLogs.push(`${target.name}(1巡目効果無効)`);
@@ -76,7 +78,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             return;
         }
 
-        // 2. 無敵/ステロイドでない場合：お守り系カードの自動消費（セット中防御カード全破棄）
+        // 2. お守り系カードの自動消費（セット中防御カード全破棄）
         const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
         const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
         const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
@@ -84,7 +86,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         if (obanIndex !== -1) {
             target.hand.splice(obanIndex, 1);
             const hadDef = !!target.defenseCard;
-            target.defenseCard = null; // 防御カード破棄
+            target.defenseCard = null;
             applyScoreChange(target, 8000);
             affectedLogs.push(`${target.name}(「お守り大判」が身代わり発動！効果無効化＆+8,000点獲得${hadDef ? '・防御カード破棄' : ''})`);
             victimsData.push({ id: target.id, result: 'DODGE', hasDefenseCard: hadDef });
@@ -94,7 +96,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             if (!kobanSet.usesLeft) kobanSet.usesLeft = 3;
             kobanSet.usesLeft -= 1;
             const hadDef = !!target.defenseCard;
-            target.defenseCard = null; // 防御カード破棄
+            target.defenseCard = null;
             applyScoreChange(target, 2000);
 
             let subMsg = kobanSet.usesLeft <= 0 ? (target.hand.splice(kobanSetIndex, 1), '・カード破棄') : `・残り${kobanSet.usesLeft}回`;
@@ -104,7 +106,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         } else if (kobanIndex !== -1) {
             target.hand.splice(kobanIndex, 1);
             const hadDef = !!target.defenseCard;
-            target.defenseCard = null; // 防御カード破棄
+            target.defenseCard = null;
             applyScoreChange(target, 3000);
             affectedLogs.push(`${target.name}(「お守り小判」が身代わり発動！効果無効化＆+3,000点獲得${hadDef ? '・防御カード破棄' : ''})`);
             victimsData.push({ id: target.id, result: 'DODGE', hasDefenseCard: hadDef });
@@ -117,6 +119,10 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
             broadcastGameState: broadcastGameState
         });
+
+        if (autoRes && autoRes.resolveDarkMatterPenalty) {
+            pendingDarkMatterResolvers.push(autoRes.resolveDarkMatterPenalty);
+        }
 
         if (autoRes) {
             let defMsg = autoRes.hadDefense ? '・防御カード破棄' : '';
@@ -144,7 +150,18 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         }
     });
 
+    // 2. ダイヤの剣処理完了後にダークマターペナルティを遅延解決
+    const pendingDarkMatterCutins = [];
+    pendingDarkMatterResolvers.forEach(resolver => {
+        const res = resolver(gameState, io);
+        if (res) {
+            if (res.penaltyLogSuffix) affectedLogs.push(res.penaltyLogSuffix);
+            if (res.darkMatterCutinData) pendingDarkMatterCutins.push(res.darkMatterCutinData);
+        }
+    });
+
     if (io) {
+        // 1. ダイヤの剣カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: caster.id,
@@ -162,11 +179,17 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
                 victims: victimsData
             }
         });
+
+        // 2. ダークマターカットイン
+        pendingDarkMatterCutins.forEach(dmCutin => {
+            io.emit('playAttackCutin', dmCutin);
+        });
     }
 
+    const duration = pendingDarkMatterCutins.length > 0 ? 3200 : 1800;
     setTimeout(() => {
         broadcastGameState(`${caster.name} が「ダイヤの剣」を発動！ (対象: ${affectedLogs.join(' / ')})`);
-    }, 1800);
+    }, duration);
 }
 
 // 地震
@@ -187,19 +210,24 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
         }
 
         const affectedLogs = [];
+        const pendingDarkMatterResolvers = [];
 
+        // 1. まず地震の全被弾処理を実行
         targets.forEach(target => {
             if (isImmuneToRound1CardEffect(target.id, casterSocketId)) {
                 affectedLogs.push(`${target.name}(1巡目効果無効)`);
                 return;
             }
 
-            // 手札からの緊急自動発動チェック
             const autoRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
                 broadcastGameState: broadcastGameState
             });
+
+            if (autoRes && autoRes.resolveDarkMatterPenalty) {
+                pendingDarkMatterResolvers.push(autoRes.resolveDarkMatterPenalty);
+            }
 
             const isInvincible = target.invincibleTurns && target.invincibleTurns > 0;
             const isSteroid = target.steroidTurns && target.steroidTurns > 0;
@@ -223,7 +251,26 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
             affectedLogs.push(`${target.name}(${damage.toLocaleString()}点・手札防御全破棄・選択不可2T)`);
         });
 
-        broadcastGameState(`${caster.name} が「地震」を発動！ (対象: ${affectedLogs.join(' / ')})`);
+        // 2. 地震処理完了後にダークマターペナルティを遅延解決
+        const pendingDarkMatterCutins = [];
+        pendingDarkMatterResolvers.forEach(resolver => {
+            const res = resolver(gameState, io);
+            if (res) {
+                if (res.penaltyLogSuffix) affectedLogs.push(res.penaltyLogSuffix);
+                if (res.darkMatterCutinData) pendingDarkMatterCutins.push(res.darkMatterCutinData);
+            }
+        });
+
+        if (io) {
+            pendingDarkMatterCutins.forEach(dmCutin => {
+                io.emit('playAttackCutin', dmCutin);
+            });
+        }
+
+        const duration = pendingDarkMatterCutins.length > 0 ? 1400 : 0;
+        setTimeout(() => {
+            broadcastGameState(`${caster.name} が「地震」を発動！ (対象: ${affectedLogs.join(' / ')})`);
+        }, duration);
     }, 2000);
 }
 
@@ -284,8 +331,8 @@ function executeDisasterAttack(gameState, casterSocketId, io, broadcastGameState
     }, 2000);
 }
 
-// ダークマター
-function executeDarkMatter(gameState, casterSocketId, broadcastGameState, isImmuneToRound1CardEffect) {
+// ダークマター（闇の広域爆発カットイン完全同期・選択不可除外対応）
+function executeDarkMatter(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
     const player = gameState.players[casterSocketId];
     if (!player) return;
 
@@ -296,54 +343,118 @@ function executeDarkMatter(gameState, casterSocketId, broadcastGameState, isImmu
     applyScoreChange(player, 5000);
     const newMyScore = player.score;
 
-    const penalizedNames = [];
-
-    Object.values(gameState.players).forEach(opponent => {
-        if (opponent.id === player.id || isImmuneToRound1CardEffect(opponent.id, casterSocketId)) return;
-
+    const allPlayers = Object.values(gameState.players);
+    const penaltyCandidates = allPlayers.filter(opponent => {
+        if (opponent.id === player.id || isImmuneToRound1CardEffect(opponent.id, casterSocketId)) return false;
         const isConditionA = (opponent.score === prevMyScore);
         const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
+        return isConditionA || isConditionB;
+    });
 
-        if (isConditionA || isConditionB) {
-            // 既に無敵・選択不可状態の場合はペナルティを受けない（手札温存）
-            const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
-            const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
-            if (isAlreadyInvincible || isAlreadyImmune) return;
+    const penalizedNames = [];
+    const defendersList = [];
+    const victimsData = [];
 
-            // 1. まず50%の不発判定を行う（不発ならペナルティが発生しないため手札温存）
-            const isSuccess = Math.random() < 0.5;
-            if (!isSuccess) {
-                penalizedNames.push(`${opponent.name}(不発)`);
-                return;
-            }
-
-            // 2. ペナルティ発生確定時：【ケースB】の手札カウンター判定（ステロイドでは無効化不可）
-            const autoRes = tryAutoTriggerDefense(gameState, opponent, {
-                allowSteroid: false,
-                isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
-                broadcastGameState: broadcastGameState
-            });
-
-            // 無敵アーマー・ダークマター等で完全無効化できた場合
-            if (autoRes && autoRes.canBlock) {
-                penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
-                return;
-            }
-
-            // ペナルティ直撃（ステロイド無駄消費またはカウンターなし）
-            opponent.hand = [];
-            opponent.defenseCard = null;
-            applyScoreChange(opponent, -3000);
-            opponent.immunityCount = 2;
-
-            const steroidWasteNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
-            penalizedNames.push(`${opponent.name}${steroidWasteNotice}`);
+    penaltyCandidates.forEach(opponent => {
+        const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
+        // 選択不可状態のプレイヤーはカットイン演出自体から除外
+        if (isAlreadyImmune) {
+            penalizedNames.push(`${opponent.name}(選択不可ガード)`);
+            return;
         }
+
+        defendersList.push({
+            id: opponent.id,
+            name: opponent.name,
+            avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png'
+        });
+
+        const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
+        if (isAlreadyInvincible) {
+            victimsData.push({
+                id: opponent.id,
+                result: 'PROTECTED',
+                protectText: '無敵！',
+                hasDefenseCard: !!opponent.defenseCard
+            });
+            penalizedNames.push(`${opponent.name}(無敵ガード)`);
+            return;
+        }
+
+        // 1. 50%不発判定
+        const isSuccess = Math.random() < 0.5;
+        if (!isSuccess) {
+            victimsData.push({
+                id: opponent.id,
+                result: 'MISS',
+                hasDefenseCard: !!opponent.defenseCard
+            });
+            penalizedNames.push(`${opponent.name}(不発)`);
+            return;
+        }
+
+        // 2. ペナルティ発生確定時：相手の手札カウンター判定（ステロイドは無効化不可）
+        const autoRes = tryAutoTriggerDefense(gameState, opponent, {
+            allowSteroid: false,
+            isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
+            broadcastGameState: broadcastGameState
+        });
+
+        if (autoRes && autoRes.canBlock) {
+            victimsData.push({
+                id: opponent.id,
+                result: 'PROTECTED',
+                protectText: autoRes.stateName,
+                hasDefenseCard: autoRes.hadDefense
+            });
+            penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
+            return;
+        }
+
+        // 3. ペナルティ直撃
+        const hadDef = autoRes ? autoRes.hadDefense : !!opponent.defenseCard;
+        opponent.hand = [];
+        opponent.defenseCard = null;
+        applyScoreChange(opponent, -3000);
+        opponent.immunityCount = 2;
+
+        const steroidNotice = (autoRes && !autoRes.canBlock) ? '(「ステロイド」自動消費・ペナルティ直撃)' : '(成功)';
+        penalizedNames.push(`${opponent.name}${steroidNotice}`);
+
+        victimsData.push({
+            id: opponent.id,
+            result: 'HIT',
+            hasDefenseCard: hadDef
+        });
     });
 
     let logMsg = `${player.name} が「ダークマター」を使用！ 無敵状態になり、+5,000点獲得！`;
     if (penalizedNames.length > 0) logMsg += ` 対象結果: ${penalizedNames.join(', ')}`;
-    broadcastGameState(logMsg);
+
+    if (defendersList.length > 0 && io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: player.id,
+                name: player.name,
+                avatar: player.avatar ? `/images/avatars/${player.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'dark_matter',
+                name: 'ダークマター',
+                image: '/images/dark_matter.png'
+            },
+            defenders: defendersList,
+            darkMatterAction: {
+                victims: victimsData
+            }
+        });
+
+        setTimeout(() => {
+            broadcastGameState(logMsg);
+        }, 1600);
+    } else {
+        broadcastGameState(logMsg);
+    }
 }
 
 // 煙幕（※仕様により手札自動発動の対象外）
@@ -412,7 +523,7 @@ function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImm
 }
 
 // バフ解除時効果
-function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffect) {
+function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffect, io) {
     const cardName = buffType === 'ARMOR' ? '無敵アーマー' : 'ステロイド';
     const prevMyScore = player.score;
 
@@ -425,6 +536,7 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
     applyScoreChange(player, 1000);
     const newMyScore = player.score;
     const penalizedNames = [];
+    const pendingDarkMatterResolvers = [];
 
     Object.values(gameState.players).forEach(opponent => {
         if (opponent.id === player.id || isImmuneToRound1CardEffect(opponent.id, player.id)) return;
@@ -433,7 +545,6 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
         const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
 
         if (isConditionA || isConditionB) {
-            // 既に無敵・選択不可・ステロイド（ステロイド解除時のみ）状態の場合はペナルティを受けない（手札温存）
             const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
             const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
             const isAlreadySteroid = opponent.steroidTurns && opponent.steroidTurns > 0;
@@ -441,26 +552,29 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
             if (isAlreadyInvincible || isAlreadyImmune) return;
             if (buffType === 'STEROID' && isAlreadySteroid) return;
 
-            // 1. まず50%の不発判定を行う（不発ならペナルティが発生しないため手札温存）
+            // 1. 50%不発判定
             const isSuccess = Math.random() < 0.5;
             if (!isSuccess) {
                 penalizedNames.push(`${opponent.name}(不発)`);
                 return;
             }
 
-            // 2. ペナルティ発生確定時：【ケースB】の手札カウンター判定（ステロイドでは無効化不可）
+            // 2. ペナルティ発生確定時：相手の手札カウンター判定（ステロイドは無効化不可）
             const autoRes = tryAutoTriggerDefense(gameState, opponent, {
                 allowSteroid: false,
                 isImmuneToRound1CardEffect: isImmuneToRound1CardEffect
             });
 
-            // 無敵アーマー・ダークマター等で完全無効化できた場合
+            if (autoRes && autoRes.resolveDarkMatterPenalty) {
+                pendingDarkMatterResolvers.push(autoRes.resolveDarkMatterPenalty);
+            }
+
             if (autoRes && autoRes.canBlock) {
                 penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
                 return;
             }
 
-            // ペナルティ直撃（ステロイド無駄消費またはカウンターなし）
+            // 3. ペナルティ直撃
             opponent.hand = [];
             opponent.defenseCard = null;
             applyScoreChange(opponent, -3000);
@@ -468,6 +582,16 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
 
             const steroidWasteNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
             penalizedNames.push(`${opponent.name}${steroidWasteNotice}`);
+        }
+    });
+
+    pendingDarkMatterResolvers.forEach(resolver => {
+        const res = resolver(gameState, io);
+        if (res) {
+            if (res.penaltyLogSuffix) penalizedNames.push(res.penaltyLogSuffix);
+            if (res.darkMatterCutinData && io) {
+                io.emit('playAttackCutin', res.darkMatterCutinData);
+            }
         }
     });
 

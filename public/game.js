@@ -14,8 +14,9 @@ let showOtherPlayersInfo = true;
 let isTimeBombModalTriggeredByEndTurn = false;
 let skipBonusModal = true;
 
-// 攻撃カットイン再生状態＆スコアアニメーション保留キュー
+// 攻撃カットインキュー＆LPアニメーション保留管理
 let isAttackCutinPlaying = false;
+let attackCutinQueue = [];
 let pendingLPScoreQueue = [];
 
 let availablePresetAvatars = [
@@ -134,36 +135,53 @@ socket.on('showCutIn', (data) => {
     }, 2500);
 });
 
-// 攻撃カットイン演出の受信リスナー
-socket.on('playAttackCutin', (data) => {
-    closeDropActionModal();
-    closeTimeBombModal();
+// カットインキュー処理システム（多段カットイン・連続演出の順次再生）
+function processAttackCutinQueue() {
+    if (isAttackCutinPlaying || attackCutinQueue.length === 0) return;
+
+    const nextCutinData = attackCutinQueue.shift();
     isAttackCutinPlaying = true;
 
     if (window.AttackAnimation && typeof window.AttackAnimation.play === 'function') {
-        window.AttackAnimation.play(data, () => {
+        window.AttackAnimation.play(nextCutinData, () => {
             isAttackCutinPlaying = false;
+
+            // 先行カットイン分のLP変動を消化
             if (pendingLPScoreQueue.length > 0) {
-                setTimeout(() => {
-                    const mergedTasks = {};
-                    while (pendingLPScoreQueue.length > 0) {
-                        const task = pendingLPScoreQueue.shift();
-                        if (!mergedTasks[task.id]) {
-                            mergedTasks[task.id] = { ...task };
-                        } else {
-                            mergedTasks[task.id].endVal = task.endVal;
-                            mergedTasks[task.id].diff += task.diff;
-                        }
+                const mergedTasks = {};
+                while (pendingLPScoreQueue.length > 0) {
+                    const task = pendingLPScoreQueue.shift();
+                    if (!mergedTasks[task.id]) {
+                        mergedTasks[task.id] = { ...task };
+                    } else {
+                        mergedTasks[task.id].endVal = task.endVal;
+                        mergedTasks[task.id].diff += task.diff;
                     }
-                    Object.values(mergedTasks).forEach(t => {
-                        triggerLPScoreAnimation(t.id, t.startVal, t.endVal, t.diff);
-                    });
-                }, 200);
+                }
+                Object.values(mergedTasks).forEach(t => {
+                    triggerLPScoreAnimation(t.id, t.startVal, t.endVal, t.diff);
+                });
+            }
+
+            // 次のカットイン（ダークマター等）があれば順次再生
+            if (attackCutinQueue.length > 0) {
+                setTimeout(processAttackCutinQueue, 400);
             }
         });
     } else {
         isAttackCutinPlaying = false;
+        if (attackCutinQueue.length > 0) {
+            setTimeout(processAttackCutinQueue, 100);
+        }
     }
+}
+
+// 攻撃カットイン演出の受信リスナー
+socket.on('playAttackCutin', (data) => {
+    closeDropActionModal();
+    closeTimeBombModal();
+    attackCutinQueue.push(data);
+    processAttackCutinQueue();
 });
 
 socket.on('transferTimeBombResult', (data) => {
@@ -372,7 +390,7 @@ socket.on('syncGameState', (data) => {
     }
 
     // 4. スコア変動演出のシーケンス制御
-    if (isAttackCutinPlaying) {
+    if (isAttackCutinPlaying || attackCutinQueue.length > 0) {
         pendingScoreChanges.forEach(change => {
             pendingLPScoreQueue.push(change);
         });
@@ -907,8 +925,7 @@ function updateTurnControls(data) {
 
     if (data.turnPhase === 'BONUS_CHOICE') {
         if (skipBonusModal) {
-            // スキップON時はダイアログを表示せず「獲得得点: 0点」として自動処理
-            const hasActiveAnim = Object.keys(activeScoreRollAnimators).length > 0 || isAttackCutinPlaying;
+            const hasActiveAnim = Object.keys(activeScoreRollAnimators).length > 0 || isAttackCutinPlaying || attackCutinQueue.length > 0;
             if (hasActiveAnim) {
                 setTimeout(() => chooseBonusChoice(0), 650);
             } else {
@@ -918,7 +935,7 @@ function updateTurnControls(data) {
         }
         if (bonusModal) {
             const selectEl = document.getElementById('turn-bonus-score-select');
-            if (selectEl) selectEl.value = "3000"; // 初期値 +3,000点
+            if (selectEl) selectEl.value = "3000";
             bonusModal.style.display = 'block';
         }
         roundInfo.innerHTML += ` <span style="color:#f1c40f;">【ボーナス選択中】</span>`;

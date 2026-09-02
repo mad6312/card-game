@@ -225,6 +225,59 @@
     }
 }
 
+/* ダークマター専用：闇のオーブ投擲 */
+.cutin-dark-matter-orb {
+    position: absolute;
+    left: 220px;
+    top: 50%;
+    width: 75px;
+    height: 75px;
+    object-fit: contain;
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 0 18px rgba(168, 85, 247, 0.95)) drop-shadow(0 0 30px rgba(236, 72, 153, 0.8));
+}
+
+.cutin-dark-matter-orb.active {
+    opacity: 1;
+}
+
+/* ダークマター専用：闇の広域大爆発サークル */
+.cutin-dark-matter-blast {
+    position: absolute;
+    transform: translate(-50%, -50%) scale(0);
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, #ffffff 0%, #a855f7 25%, #6b21a8 55%, #09090b 80%, transparent 100%);
+    border-radius: 50%;
+    box-shadow: 0 0 50px rgba(168, 85, 247, 0.9), inset 0 0 40px rgba(0, 0, 0, 0.95);
+    z-index: 45;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cutin-dark-matter-blast.explode {
+    animation: darkMatterBlastAnim 0.7s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes darkMatterBlastAnim {
+    0% {
+        transform: translate(-50%, -50%) scale(0.1);
+        opacity: 1;
+    }
+
+    40% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(2.2);
+        opacity: 0;
+    }
+}
+
 /* ダイヤの剣専用：天空刺突巨大ソード */
 .cutin-diamond-sword-weapon {
     position: absolute;
