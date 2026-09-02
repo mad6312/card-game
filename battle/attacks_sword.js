@@ -34,6 +34,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
             return;
         }
 
+        // 同点グループごとにシャッフルして配置と攻撃順を完全固定同期
         const grouped = {};
         lowerPlayers.forEach(p => {
             const diff = currentAttackerScore - p.score;
@@ -45,7 +46,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
         const attackQueue = [];
 
         sortedDiffs.forEach(diff => {
-            const group = grouped[diff];
+            const group = [...grouped[diff]];
             for (let i = group.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [group[i], group[j]] = [group[j], group[i]];
@@ -53,6 +54,7 @@ function executeWoodSwordAttack(gameState, attackerId, targetTypeOrId, io, broad
             attackQueue.push(...group);
         });
 
+        // 攻撃順（キュー順）通りのディフェンダー配列
         const defendersList = attackQueue.map(p => ({
             id: p.id,
             name: p.name,
@@ -363,7 +365,7 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
 
             if (target.invincibleTurns && target.invincibleTurns > 0) {
                 if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
+                logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
                 cutinRes = 'INVINCIBLE';
                 rounds.push({
                     roundNumber: actualAttacksDone,
@@ -374,7 +376,7 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
 
             if (target.steroidTurns && target.steroidTurns > 0) {
                 target.steroidRevealed = true;
-                logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（連撃中断）`);
+                logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（連撃中断）`);
                 cutinRes = 'STEROID';
                 rounds.push({
                     roundNumber: actualAttacksDone,
@@ -386,7 +388,7 @@ function executeWoodSwordSetAttack(gameState, attackerId, targetId, cardObj, max
             let blockedNotice = (target.defenseCard && isDefenseBlocked(target, attacker)) ? ` 相手は「${target.defenseCard.card.name}」をセット中ですが、自分より得点が高いプレイヤーからの攻撃のため防御効果が発動しません！` : '';
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
-            logs.push(logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${blockedNotice} 得点-3,000点！ (${target.name}は選択不可状態になりました。連撃終了)`);
+            logs.push(`${attacker.name} の「木の剣セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目, 対象: ${target.name})！ 命中ヒット！${blockedNotice} 得点-3,000点！ (${target.name}は選択不可状態になりました。連撃終了)`);
             cutinRes = 'HIT';
             rounds.push({
                 roundNumber: actualAttacksDone,
@@ -452,6 +454,7 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
         return;
     }
 
+    // 初回キュー構築（同点グループごとにシャッフルして完全固定）
     const initGrouped = {};
     initialCandidates.forEach(p => {
         const diff = Math.abs(myScore - p.score);
@@ -460,12 +463,18 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
     });
 
     const initSortedDiffs = Object.keys(initGrouped).map(Number).sort((a, b) => a - b);
-    const sortedInitList = [];
+    const sortedFixedList = [];
     initSortedDiffs.forEach(diff => {
-        sortedInitList.push(...initGrouped[diff]);
+        const group = [...initGrouped[diff]];
+        for (let i = group.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [group[i], group[j]] = [group[j], group[i]];
+        }
+        sortedFixedList.push(...group);
     });
 
-    const defendersList = sortedInitList.map(p => ({
+    // 画面上の並び順（左側から先頭）をシャッフル後の順序に完全一致
+    const defendersList = sortedFixedList.map(p => ({
         id: p.id,
         name: p.name,
         avatar: p.avatar ? `/images/avatars/${p.avatar}.png` : '/images/avatars/avatar_default.png'
@@ -482,31 +491,15 @@ function executeWoodSwordSetGroupAttack(gameState, attackerId, cardObj, maxAttac
     for (let r = 0; r < maxAttacks; r++) {
         if (cardObj.usesLeft <= 0 || stoppedByInvincible) break;
 
-        const roundCandidates = Object.values(gameState.players).filter(p => {
-            if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-            return p.score < myScore;
+        // 固定順リストから現在有効な対象のみを抽出（再シャッフルしない）
+        const attackQueue = sortedFixedList.filter(p => {
+            const livePlayer = gameState.players[p.id];
+            if (!livePlayer) return false;
+            if (livePlayer.immunityCount && livePlayer.immunityCount > 0) return false;
+            return livePlayer.score < myScore;
         });
 
-        if (roundCandidates.length === 0) break;
-
-        const grouped = {};
-        roundCandidates.forEach(p => {
-            const diff = Math.abs(myScore - p.score);
-            if (!grouped[diff]) grouped[diff] = [];
-            grouped[diff].push(p);
-        });
-
-        const sortedDiffs = Object.keys(grouped).map(Number).sort((a, b) => a - b);
-        const attackQueue = [];
-
-        sortedDiffs.forEach(diff => {
-            const group = grouped[diff];
-            for (let i = group.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [group[i], group[j]] = [group[j], group[i]];
-            }
-            attackQueue.push(...group);
-        });
+        if (attackQueue.length === 0) break;
 
         actualAttacksDone++;
         cardObj.usesLeft -= 1;
@@ -732,7 +725,7 @@ function executeStandardAttack(gameState, attackerId, targetId, cardId, io, broa
         }
 
         if (autoTriggerRes) {
-            broadcastGameState(logPrefix + rateText + `命中！しかし ${target.name} の手札から「${autoTriggerRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoTriggerRes.logMsg})`);
+            broadcastGameState(logPrefix + rateText + `命中！しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoTriggerRes.logMsg})`);
             return;
         }
 
