@@ -1,6 +1,6 @@
 /**
  * 攻撃カットインアニメーション制御モジュール (attackAnimation.js)
- * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）、闇の広域爆発（ダークマター）に対応
+ * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）、闇の広域爆発（ダークマター）、黄金解放（バフ解除）に対応
  */
 
 (function (window) {
@@ -34,11 +34,132 @@
         const isGrenadeAttack = (card.id === 'grenade');
         const isDiamondSword = (card.id === 'diamond_sword');
         const isDarkMatter = (card.id === 'dark_matter');
+        const isBuffExpire = !!data.buffExpireAction;
 
         const rounds = data.rounds || (data.results ? [{ roundNumber: 1, results: data.results }] : []);
 
-        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction && !data.darkMatterAction) {
+        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction && !data.darkMatterAction && !data.buffExpireAction) {
             if (onComplete) onComplete();
+            return;
+        }
+
+        // ==========================================
+        // 【バフ解除専用：中央完全固定＆黄金ショックウェーブ解放】
+        // ==========================================
+        if (isBuffExpire && data.buffExpireAction) {
+            const action = data.buffExpireAction;
+            const victims = action.victims || [];
+            const victimCount = victims.length;
+
+            stage.innerHTML = `
+                <div class="cutin-buff-expire-blast" id="cutin-buff-expire-blast"></div>
+                <div class="cutin-expire-stage-container" id="cutin-expire-stage-container"></div>
+            `;
+
+            const container = document.getElementById('cutin-expire-stage-container');
+            const blastEl = document.getElementById('cutin-buff-expire-blast');
+
+            // 1. 解除者（自分）：常に画面の中心座標（50%）に完全固定
+            const selfUnit = document.createElement('div');
+            selfUnit.className = 'cutin-expire-self-unit';
+            selfUnit.id = 'cutin-expire-self';
+            selfUnit.innerHTML = `
+                <div class="cutin-result-badge show" style="color:#f1c40f; font-size:18px;">解除！</div>
+                <img src="${attacker.avatar || '/images/avatars/avatar_default.png'}" class="cutin-avatar-attacker" style="border-color:#f1c40f; width:72px; height:72px;" alt="${attacker.name}" onerror="this.src='/images/avatars/avatar_default.png'">
+                <span class="cutin-player-name">${attacker.name}</span>
+                <div class="cutin-invincible-aura show" id="cutin-aura-self"></div>
+            `;
+            container.appendChild(selfUnit);
+
+            const defenderUnitMap = {};
+
+            // 2. 人数に応じた中央基準オフセット（X座標）の定義
+            let offsets = [];
+            if (victimCount === 1) {
+                offsets = [150]; // [自分(中央)] ── [対象A(右)]
+            } else if (victimCount === 2) {
+                offsets = [-160, 160]; // [対象A(左)] ── [自分(中央)] ── [対象B(右)]
+            } else if (victimCount === 3) {
+                offsets = [-260, -130, 170]; // [対象A(左外)] ─ [対象B(左内)] ─ [自分(中央)] ─ [対象C(右)]
+            }
+
+            // 3. 対象ユニット群を中心基準で絶対オフセット配置
+            victims.forEach((v, idx) => {
+                const defEl = document.createElement('div');
+                defEl.className = 'cutin-expire-defender-unit';
+                defEl.id = `cutin-def-${v.id}`;
+                defEl.setAttribute('data-index', idx);
+
+                const offsetVal = offsets[idx] || (150 * (idx + 1));
+                defEl.style.left = `calc(50% + ${offsetVal}px)`;
+                defEl.setAttribute('data-side', offsetVal < 0 ? 'left' : 'right');
+
+                defEl.innerHTML = `
+                    <div class="cutin-result-badge" id="cutin-badge-${v.id}"></div>
+                    <img src="${v.avatar || '/images/avatars/avatar_default.png'}" class="cutin-avatar-defender" alt="${v.name}" onerror="this.src='/images/avatars/avatar_default.png'">
+                    <span class="cutin-player-name">${v.name}</span>
+                    <img src="/images/wood_shield.png" class="cutin-def-shield-card" id="cutin-def-card-${v.id}" alt="防御カード">
+                    <div class="cutin-invincible-aura" id="cutin-aura-${v.id}"></div>
+                `;
+
+                container.appendChild(defEl);
+                defenderUnitMap[v.id] = defEl;
+            });
+
+            layer.classList.add('active');
+
+            setTimeout(() => {
+                if (blastEl) blastEl.classList.add('explode');
+
+                if (flash) {
+                    flash.classList.remove('flash');
+                    void flash.offsetWidth;
+                    flash.classList.add('flash');
+                }
+
+                victims.forEach((v) => {
+                    const vUnit = defenderUnitMap[v.id];
+                    if (!vUnit) return;
+
+                    const vBadge = document.getElementById(`cutin-badge-${v.id}`);
+                    const vCard = document.getElementById(`cutin-def-card-${v.id}`);
+                    const vAura = document.getElementById(`cutin-aura-${v.id}`);
+
+                    const side = vUnit.getAttribute('data-side');
+                    const blowClass = (side === 'left') ? 'blow-left-up' : 'blow-right-up';
+
+                    if (v.result === 'PROTECTED') {
+                        if (vAura) vAura.classList.add('show');
+                        if (vBadge) {
+                            vBadge.innerText = v.protectText || '無敵！';
+                            vBadge.className = 'cutin-result-badge badge-invincible show';
+                        }
+                    } else if (v.result === 'MISS') {
+                        if (vBadge) {
+                            vBadge.innerText = '回避！';
+                            vBadge.className = 'cutin-result-badge badge-dodge show';
+                        }
+                        vUnit.classList.add('dodge-action');
+                    } else {
+                        if (vCard && v.hasDefenseCard) {
+                            vCard.classList.add('broken');
+                        }
+                        if (vBadge) {
+                            vBadge.innerText = '命中！';
+                            vBadge.className = 'cutin-result-badge badge-hit show';
+                        }
+                        vUnit.classList.add(blowClass);
+                    }
+                });
+
+                setTimeout(() => {
+                    layer.classList.remove('active');
+                    setTimeout(() => {
+                        stage.innerHTML = '';
+                        if (onComplete) onComplete();
+                    }, 280);
+                }, 1050);
+            }, 450);
             return;
         }
 
@@ -172,14 +293,12 @@
                                 vBadge.className = 'cutin-result-badge badge-invincible show';
                             }
                         } else if (v.result === 'MISS') {
-                            // 50%不発
                             if (vBadge) {
                                 vBadge.innerText = '回避！';
                                 vBadge.className = 'cutin-result-badge badge-dodge show';
                             }
                             vUnit.classList.add('dodge-action');
                         } else {
-                            // 命中ヒット（ステロイド・防御カード所持含む）
                             if (vCard && v.hasDefenseCard) {
                                 vCard.classList.add('broken');
                             }
@@ -414,7 +533,9 @@
                             }
 
                             if (v.result === 'PROTECTED') {
-                                if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
+                                if (vCard && v.hasDefenseCard) {
+                                    vCard.classList.add('broken');
+                                }
                                 if (vAura) vAura.classList.add('show');
                                 if (vBadge) {
                                     vBadge.innerText = v.protectText || '無敵！';

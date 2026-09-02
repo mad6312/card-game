@@ -51,7 +51,7 @@
     }
 }
 
-/* バトルステージ領域（左右の対峙） */
+/* バトルステージ領域 */
 .attack-cutin-stage {
     position: relative;
     width: 90%;
@@ -191,7 +191,7 @@
     opacity: 1;
 }
 
-/* グレネード専用：大爆発サークル＆ショックウェーブ */
+/* グレネード専用：大爆発サークル */
 .cutin-explosion-blast {
     position: absolute;
     transform: translate(-50%, -50%) scale(0);
@@ -274,6 +274,43 @@
 
     100% {
         transform: translate(-50%, -50%) scale(2.2);
+        opacity: 0;
+    }
+}
+
+/* 無敵アーマー／ステロイド解除専用：黄金ショックウェーブ爆発サークル */
+.cutin-buff-expire-blast {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    width: 420px;
+    height: 420px;
+    background: radial-gradient(circle, #ffffff 0%, #f1c40f 25%, #e67e22 55%, #d35400 75%, transparent 100%);
+    border-radius: 50%;
+    box-shadow: 0 0 60px rgba(241, 196, 15, 0.95), inset 0 0 40px rgba(230, 126, 34, 0.8);
+    z-index: 45;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.cutin-buff-expire-blast.explode {
+    animation: buffExpireBlastAnim 0.75s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes buffExpireBlastAnim {
+    0% {
+        transform: translate(-50%, -50%) scale(0.1);
+        opacity: 1;
+    }
+
+    45% {
+        transform: translate(-50%, -50%) scale(1.6);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translate(-50%, -50%) scale(2.3);
         opacity: 0;
     }
 }
@@ -388,6 +425,30 @@
     gap: 50px;
 }
 
+/* 解除演出専用：絶対中央基準ステージコンテナ */
+.cutin-expire-stage-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* 解除者（自分）の中央完全固定ユニット */
+.cutin-expire-self-unit {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 20;
+}
+
 /* 個別ディフェンダーユニット */
 .cutin-defender-unit {
     position: relative;
@@ -395,6 +456,19 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* 解除時専用：絶対オフセット配置ユニット */
+.cutin-expire-defender-unit {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 15;
     transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
@@ -597,7 +671,7 @@
 
 @keyframes blowLeftUpAnim {
     0% {
-        transform: translate(0, 0) rotate(0deg) scale(1);
+        transform: translate(-50%, -50%) rotate(0deg) scale(1);
         opacity: 1;
     }
 
@@ -619,7 +693,7 @@
 
 @keyframes blowStraightUpAnim {
     0% {
-        transform: translate(0, 0) rotate(0deg) scale(1);
+        transform: translate(-50%, -50%) rotate(0deg) scale(1);
         opacity: 1;
     }
 
@@ -641,7 +715,7 @@
 
 @keyframes blowRightUpAnim {
     0% {
-        transform: translate(0, 0) rotate(0deg) scale(1);
+        transform: translate(-50%, -50%) rotate(0deg) scale(1);
         opacity: 1;
     }
 

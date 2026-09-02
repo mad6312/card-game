@@ -146,7 +146,6 @@ function processAttackCutinQueue() {
         window.AttackAnimation.play(nextCutinData, () => {
             isAttackCutinPlaying = false;
 
-            // 先行カットイン分のLP変動を消化
             if (pendingLPScoreQueue.length > 0) {
                 const mergedTasks = {};
                 while (pendingLPScoreQueue.length > 0) {
@@ -163,7 +162,6 @@ function processAttackCutinQueue() {
                 });
             }
 
-            // 次のカットイン（ダークマター等）があれば順次再生
             if (attackCutinQueue.length > 0) {
                 setTimeout(processAttackCutinQueue, 400);
             }
@@ -1391,7 +1389,7 @@ function updateHitRateDisplay(selectEl) {
                 return diff >= 1 && diff <= 5000;
             });
             if (candidates.length > 0) {
-                const hitRates = calculateLowerTargetsHitRates(candidates, isDarkness);
+                const hitRates = calculateLowerTargetsHitRates(candidates, myPlayer.darknessTurns > 0);
                 const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
                 displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
             } else {
@@ -1647,7 +1645,21 @@ function openDropCardModal(source, instanceId) {
             if (targetPlayers.length === 0) {
                 html += `<div style="color:#e74c3c; font-size:0.85em; font-weight:bold; margin-bottom:8px;">※現在、対象となるプレイヤーが存在しません</div>`;
             } else {
-                const targetNames = targetPlayers.map(p => (p.id === myId ? `${p.name}(あなた)` : p.name)).join(', ');
+                // 選択不可状態のプレイヤーも除外せず「（選択不可）」テキストを付与して表示
+                const targetNames = targetPlayers.map(p => {
+                    const isMe = (p.id === myId);
+                    const isImmune = (p.immunityCount && p.immunityCount > 0);
+                    if (isMe && isImmune) {
+                        return `${p.name}(あなた・選択不可)`;
+                    } else if (isMe) {
+                        return `${p.name}(あなた)`;
+                    } else if (isImmune) {
+                        return `${p.name}(選択不可)`;
+                    } else {
+                        return p.name;
+                    }
+                }).join(', ');
+
                 html += `<div style="color:#38bdf8; font-size:0.85em; margin-bottom:8px;">攻撃対象 (1位±1,000点): <b>${targetNames}</b></div>`;
             }
             html += `<button class="btn" style="background:#0ea5e9; color:#fff; font-size:1.05em; width:100%; font-weight:bold;" onclick="socket.emit('playCard', { instanceId: '${card.instanceId}' }); closeDropActionModal();">ダイヤの剣を発動する</button>`;

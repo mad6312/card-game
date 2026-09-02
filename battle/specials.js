@@ -161,7 +161,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
     });
 
     if (io) {
-        // 1. ダイヤの剣カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: caster.id,
@@ -180,7 +179,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             }
         });
 
-        // 2. ダークマターカットイン
         pendingDarkMatterCutins.forEach(dmCutin => {
             io.emit('playAttackCutin', dmCutin);
         });
@@ -212,7 +210,6 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
         const affectedLogs = [];
         const pendingDarkMatterResolvers = [];
 
-        // 1. まず地震の全被弾処理を実行
         targets.forEach(target => {
             if (isImmuneToRound1CardEffect(target.id, casterSocketId)) {
                 affectedLogs.push(`${target.name}(1巡目効果無効)`);
@@ -251,7 +248,6 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
             affectedLogs.push(`${target.name}(${damage.toLocaleString()}点・手札防御全破棄・選択不可2T)`);
         });
 
-        // 2. 地震処理完了後にダークマターペナルティを遅延解決
         const pendingDarkMatterCutins = [];
         pendingDarkMatterResolvers.forEach(resolver => {
             const res = resolver(gameState, io);
@@ -357,7 +353,6 @@ function executeDarkMatter(gameState, casterSocketId, io, broadcastGameState, is
 
     penaltyCandidates.forEach(opponent => {
         const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
-        // 選択不可状態のプレイヤーはカットイン演出自体から除外
         if (isAlreadyImmune) {
             penalizedNames.push(`${opponent.name}(選択不可ガード)`);
             return;
@@ -522,9 +517,10 @@ function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImm
     }
 }
 
-// バフ解除時効果
+// バフ解除時効果（黄金ショックウェーブ解放カットイン完全同期）
 function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffect, io) {
     const cardName = buffType === 'ARMOR' ? '無敵アーマー' : 'ステロイド';
+    const cardId = buffType === 'ARMOR' ? 'invincible_armor' : 'steroid';
     const prevMyScore = player.score;
 
     if (buffType === 'ARMOR') {
@@ -537,6 +533,7 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
     const newMyScore = player.score;
     const penalizedNames = [];
     const pendingDarkMatterResolvers = [];
+    const victimsData = [];
 
     Object.values(gameState.players).forEach(opponent => {
         if (opponent.id === player.id || isImmuneToRound1CardEffect(opponent.id, player.id)) return;
@@ -545,16 +542,53 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
         const isConditionB = (opponent.score > prevMyScore && newMyScore >= opponent.score);
 
         if (isConditionA || isConditionB) {
-            const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
             const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
+            // 選択不可状態のプレイヤーはカットインから除外
+            if (isAlreadyImmune) {
+                penalizedNames.push(`${opponent.name}(選択不可ガード)`);
+                return;
+            }
+
+            const isAlreadyInvincible = opponent.invincibleTurns && opponent.invincibleTurns > 0;
             const isAlreadySteroid = opponent.steroidTurns && opponent.steroidTurns > 0;
 
-            if (isAlreadyInvincible || isAlreadyImmune) return;
-            if (buffType === 'STEROID' && isAlreadySteroid) return;
+            if (isAlreadyInvincible) {
+                victimsData.push({
+                    id: opponent.id,
+                    name: opponent.name,
+                    avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png',
+                    result: 'PROTECTED',
+                    protectText: '無敵！',
+                    hasDefenseCard: !!opponent.defenseCard
+                });
+                penalizedNames.push(`${opponent.name}(無敵ガード)`);
+                return;
+            }
+
+            // ステロイド解除時に相手がステロイド状態なら防げる
+            if (buffType === 'STEROID' && isAlreadySteroid) {
+                victimsData.push({
+                    id: opponent.id,
+                    name: opponent.name,
+                    avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png',
+                    result: 'PROTECTED',
+                    protectText: 'ステロイド！',
+                    hasDefenseCard: !!opponent.defenseCard
+                });
+                penalizedNames.push(`${opponent.name}(ステロイドガード)`);
+                return;
+            }
 
             // 1. 50%不発判定
             const isSuccess = Math.random() < 0.5;
             if (!isSuccess) {
+                victimsData.push({
+                    id: opponent.id,
+                    name: opponent.name,
+                    avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png',
+                    result: 'MISS',
+                    hasDefenseCard: !!opponent.defenseCard
+                });
                 penalizedNames.push(`${opponent.name}(不発)`);
                 return;
             }
@@ -570,11 +604,20 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
             }
 
             if (autoRes && autoRes.canBlock) {
+                victimsData.push({
+                    id: opponent.id,
+                    name: opponent.name,
+                    avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png',
+                    result: 'PROTECTED',
+                    protectText: autoRes.stateName,
+                    hasDefenseCard: autoRes.hadDefense
+                });
                 penalizedNames.push(`${opponent.name}(「${autoRes.cardName}」自動発動ガード)`);
                 return;
             }
 
             // 3. ペナルティ直撃
+            const hadDef = autoRes ? autoRes.hadDefense : !!opponent.defenseCard;
             opponent.hand = [];
             opponent.defenseCard = null;
             applyScoreChange(opponent, -3000);
@@ -582,9 +625,37 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
 
             const steroidWasteNotice = (autoRes && !autoRes.canBlock) ? `(「ステロイド」自動消費・ペナルティ直撃)` : `(成功)`;
             penalizedNames.push(`${opponent.name}${steroidWasteNotice}`);
+
+            victimsData.push({
+                id: opponent.id,
+                name: opponent.name,
+                avatar: opponent.avatar ? `/images/avatars/${opponent.avatar}.png` : '/images/avatars/avatar_default.png',
+                result: 'HIT',
+                hasDefenseCard: hadDef
+            });
         }
     });
 
+    // 1. バフ解除カットインの発行（対象が存在する場合）
+    if (victimsData.length > 0 && io) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: player.id,
+                name: player.name,
+                avatar: player.avatar ? `/images/avatars/${player.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: cardId,
+                name: cardName,
+                image: `/images/${cardId}.png`
+            },
+            buffExpireAction: {
+                victims: victimsData
+            }
+        });
+    }
+
+    // 2. 自動発動したダークマターのペナルティ＆カットインを解決
     pendingDarkMatterResolvers.forEach(resolver => {
         const res = resolver(gameState, io);
         if (res) {
