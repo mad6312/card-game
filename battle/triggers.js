@@ -81,6 +81,7 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
         victim.steroidTurns = 4;
         victim.steroidRevealed = true; // 公開状態
         if (victim.timeBombTurns > 0) victim.timeBombTurns = 0; // 時限爆弾消滅
+        if (victim.darknessTurns > 0) victim.darknessTurns = 0; // 暗闇状態即時解除
         stateName = 'ステロイド！';
 
         if (allowSteroid) {
@@ -95,6 +96,7 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
         victim.invincibleSource = 'ARMOR';
         victim.armorRevealed = true; // 公開状態
         if (victim.timeBombTurns > 0) victim.timeBombTurns = 0; // 時限爆弾消滅
+        if (victim.darknessTurns > 0) victim.darknessTurns = 0; // 暗闇状態即時解除
         stateName = '無敵！';
         canBlock = true;
         logMsg = `${victim.name} の手札から「無敵アーマー」が自動発動！ (防御カード全破棄＆無敵状態付与)`;
@@ -102,6 +104,7 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
         victim.invincibleTurns = 1;
         victim.invincibleSource = 'DARK_MATTER';
         if (victim.timeBombTurns > 0) victim.timeBombTurns = 0; // 時限爆弾消滅
+        if (victim.darknessTurns > 0) victim.darknessTurns = 0; // 暗闇状態即時解除
 
         const prevScore = victim.score;
         applyScoreChange(victim, 5000);
@@ -125,7 +128,6 @@ function tryAutoTriggerDefense(gameState, victim, options = {}) {
 
                 if (isConditionA || isConditionB) {
                     const isAlreadyOpImmune = opponent.immunityCount && opponent.immunityCount > 0;
-                    // 選択不可状態のプレイヤーはカットイン演出自体から除外
                     if (isAlreadyOpImmune) {
                         penalizedNames.push(`${opponent.name}(選択不可ガード)`);
                         return;

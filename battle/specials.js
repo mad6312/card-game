@@ -44,7 +44,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
     const affectedLogs = [];
     const pendingDarkMatterResolvers = [];
 
-    // 1. まずダイヤの剣の全被弾処理を実行
     targetPlayers.forEach(target => {
         if (target.id !== casterSocketId && isImmuneToRound1CardEffect(target.id, casterSocketId)) {
             affectedLogs.push(`${target.name}(1巡目効果無効)`);
@@ -55,7 +54,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         const isSteroid = target.steroidTurns && target.steroidTurns > 0;
         const isImmune = target.immunityCount && target.immunityCount > 0;
 
-        // 1. すでに「無敵状態」「ステロイド状態」「選択不可状態」の場合（お守りは温存）
         if (isInvincible || isSteroid || isImmune) {
             if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             if (isSteroid) target.steroidRevealed = true;
@@ -78,7 +76,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             return;
         }
 
-        // 2. お守り系カードの自動消費（セット中防御カード全破棄）
         const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
         const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
         const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
@@ -113,7 +110,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             return;
         }
 
-        // 3. お守りがない場合：ステロイド/無敵アーマー/ダークマターの手札自動発動チェック
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
@@ -150,7 +146,6 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         }
     });
 
-    // 2. ダイヤの剣処理完了後にダークマターペナルティを遅延解決
     const pendingDarkMatterCutins = [];
     pendingDarkMatterResolvers.forEach(resolver => {
         const res = resolver(gameState, io);
@@ -452,8 +447,8 @@ function executeDarkMatter(gameState, casterSocketId, io, broadcastGameState, is
     }
 }
 
-// 煙幕（※仕様により手札自動発動の対象外）
-function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImmuneToRound1CardEffect) {
+// 煙幕（使用者非表示＆煙玉・黒煙拡散カットイン完全同期）
+function executeSmokeScreen(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
 
@@ -472,6 +467,9 @@ function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImm
         return true;
     });
 
+    const victimsData = [];
+    let logMsg = '';
+
     if (targets.length > 0) {
         const affectedNames = [];
         let anySuccess = false;
@@ -484,6 +482,13 @@ function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImm
                 if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 if (isSteroid) target.steroidRevealed = true;
                 affectedNames.push(`${target.name}(無効)`);
+
+                victimsData.push({
+                    id: target.id,
+                    name: target.name,
+                    avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png',
+                    result: 'PROTECTED'
+                });
                 return;
             }
 
@@ -495,25 +500,62 @@ function executeSmokeScreen(gameState, casterSocketId, broadcastGameState, isImm
             target.darknessTurns = turns;
 
             affectedNames.push(`${target.name}(${turns}T)`);
+
+            victimsData.push({
+                id: target.id,
+                name: target.name,
+                avatar: target.avatar ? `/images/avatars/${target.avatar}.png` : '/images/avatars/avatar_default.png',
+                result: 'HIT'
+            });
         });
 
         const statusSuffix = anySuccess ? " (-1,000点 & 暗闇付与)" : "";
-        broadcastGameState(`${caster.name} が「煙幕」を使用！ 対象: ${affectedNames.join(', ')}${statusSuffix}`);
+        logMsg = `${caster.name} が「煙幕」を使用！ 対象: ${affectedNames.join(', ')}${statusSuffix}`;
     } else {
+        // 該当者がいないため自身に跳ね返る場合
         const isInvincible = caster.invincibleTurns && caster.invincibleTurns > 0;
         const isSteroid = caster.steroidTurns && caster.steroidTurns > 0;
 
+        victimsData.push({
+            id: caster.id,
+            name: caster.name,
+            avatar: caster.avatar ? `/images/avatars/${caster.avatar}.png` : '/images/avatars/avatar_default.png',
+            result: (isInvincible || isSteroid) ? 'PROTECTED' : 'HIT'
+        });
+
         if (isInvincible || isSteroid) {
-            broadcastGameState(`${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果が跳ね返りましたが、無敵またはステロイド状態のため無効化されました。`);
-            return;
+            logMsg = `${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果が跳ね返りましたが、無敵またはステロイド状態のため無効化されました。`;
+        } else {
+            applyScoreChange(caster, -1000);
+            const myRank = rankMap[caster.id];
+            const turns = (myRank === 1) ? 2 : 1;
+            caster.darknessTurns = turns;
+            logMsg = `${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果発動 (-1,000点 & 暗闇${turns}ターン付与)`;
         }
+    }
 
-        applyScoreChange(caster, -1000);
-        const myRank = rankMap[caster.id];
-        const turns = (myRank === 1) ? 2 : 1;
-        caster.darknessTurns = turns;
+    if (io && victimsData.length > 0) {
+        io.emit('playAttackCutin', {
+            attacker: {
+                id: caster.id,
+                name: caster.name,
+                avatar: caster.avatar ? `/images/avatars/${caster.avatar}.png` : '/images/avatars/avatar_default.png'
+            },
+            card: {
+                id: 'smoke_screen',
+                name: '煙幕',
+                image: '/images/smoke_screen.png'
+            },
+            smokeScreenAction: {
+                victims: victimsData
+            }
+        });
 
-        broadcastGameState(`${caster.name} が「煙幕」を使用！ 該当する相手がいないため自身に効果発動 (-1,000点 & 暗闇${turns}ターン付与)`);
+        setTimeout(() => {
+            broadcastGameState(logMsg);
+        }, 2500);
+    } else {
+        broadcastGameState(logMsg);
     }
 }
 
@@ -543,7 +585,6 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
 
         if (isConditionA || isConditionB) {
             const isAlreadyImmune = opponent.immunityCount && opponent.immunityCount > 0;
-            // 選択不可状態のプレイヤーはカットインから除外
             if (isAlreadyImmune) {
                 penalizedNames.push(`${opponent.name}(選択不可ガード)`);
                 return;
@@ -565,7 +606,6 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
                 return;
             }
 
-            // ステロイド解除時に相手がステロイド状態なら防げる
             if (buffType === 'STEROID' && isAlreadySteroid) {
                 victimsData.push({
                     id: opponent.id,
@@ -636,7 +676,6 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
         }
     });
 
-    // 1. バフ解除カットインの発行（対象が存在する場合）
     if (victimsData.length > 0 && io) {
         io.emit('playAttackCutin', {
             attacker: {
@@ -655,7 +694,6 @@ function handleBuffExpire(gameState, player, buffType, isImmuneToRound1CardEffec
         });
     }
 
-    // 2. 自動発動したダークマターのペナルティ＆カットインを解決
     pendingDarkMatterResolvers.forEach(resolver => {
         const res = resolver(gameState, io);
         if (res) {

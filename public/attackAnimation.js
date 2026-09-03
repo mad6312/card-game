@@ -1,6 +1,6 @@
 /**
  * 攻撃カットインアニメーション制御モジュール (attackAnimation.js)
- * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）、闇の広域爆発（ダークマター）、黄金解放（バフ解除）に対応
+ * 突進（盾・剣）、射撃（ショットガン）、手榴弾投擲（グレネード）、天空刺突（ダイヤの剣）、闇の広域爆発（ダークマター）、黄金解放（バフ解除）、煙幕（スモーク）に対応
  */
 
 (function (window) {
@@ -34,12 +34,89 @@
         const isGrenadeAttack = (card.id === 'grenade');
         const isDiamondSword = (card.id === 'diamond_sword');
         const isDarkMatter = (card.id === 'dark_matter');
+        const isSmokeScreen = (card.id === 'smoke_screen') || !!data.smokeScreenAction;
         const isBuffExpire = !!data.buffExpireAction;
 
         const rounds = data.rounds || (data.results ? [{ roundNumber: 1, results: data.results }] : []);
 
-        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction && !data.darkMatterAction && !data.buffExpireAction) {
+        if (rounds.length === 0 && !data.grenadeAction && !data.diamondSwordAction && !data.darkMatterAction && !data.buffExpireAction && !data.smokeScreenAction) {
             if (onComplete) onComplete();
+            return;
+        }
+
+        // ==========================================
+        // 【煙幕専用：使用者非表示＆煙玉落下・煙幕拡散】
+        // ==========================================
+        if (isSmokeScreen && data.smokeScreenAction) {
+            const action = data.smokeScreenAction;
+            const victims = action.victims || [];
+            const victimCount = victims.length;
+
+            stage.innerHTML = `
+                <img src="/images/smoke_bomb.png" class="cutin-smoke-bomb" id="cutin-smoke-bomb" alt="煙玉" onerror="this.src='/images/smoke_screen.png'">
+                <img src="/images/smoke_cloud.png" class="cutin-smoke-cloud" id="cutin-smoke-cloud" alt="煙幕" onerror="this.src='/images/smoke_screen.png'">
+                <div class="cutin-smoke-stage-container" id="cutin-smoke-stage-container"></div>
+            `;
+
+            const container = document.getElementById('cutin-smoke-stage-container');
+            const smokeBombEl = document.getElementById('cutin-smoke-bomb');
+            const smokeCloudEl = document.getElementById('cutin-smoke-cloud');
+
+            let offsets = [];
+            if (victimCount === 1) {
+                offsets = [0]; // [対象 (中央: 50%)]
+            } else if (victimCount === 2) {
+                offsets = [-130, 130]; // [対象A] ── [対象B]
+            } else if (victimCount === 3) {
+                offsets = [-220, 0, 220]; // [対象A] ─ [対象B] ─ [対象C]
+            }
+
+            // 対象ユニット群を静止状態で中央対称配置
+            victims.forEach((v, idx) => {
+                const defEl = document.createElement('div');
+                defEl.className = 'cutin-smoke-defender-unit';
+                defEl.id = `cutin-smoke-def-${v.id}`;
+
+                const offsetVal = offsets[idx] || (140 * (idx - 1));
+                defEl.style.left = `calc(50% + ${offsetVal}px)`;
+
+                const isProtected = (v.result === 'PROTECTED');
+
+                defEl.innerHTML = `
+                    <img src="${v.avatar || '/images/avatars/avatar_default.png'}" class="cutin-avatar-defender" alt="${v.name}" onerror="this.src='/images/avatars/avatar_default.png'">
+                    <span class="cutin-player-name">${v.name}</span>
+                    <div class="cutin-invincible-aura ${isProtected ? 'show' : ''}"></div>
+                `;
+
+                container.appendChild(defEl);
+            });
+
+            layer.classList.add('active');
+
+            setTimeout(() => {
+                // 1. 煙玉急降下
+                if (smokeBombEl) smokeBombEl.classList.add('fall');
+
+                setTimeout(() => {
+                    // 2. 着弾＆煙幕大拡散
+                    if (smokeBombEl) smokeBombEl.style.opacity = '0';
+                    if (smokeCloudEl) smokeCloudEl.classList.add('spread');
+
+                    if (flash) {
+                        flash.classList.remove('flash');
+                        void flash.offsetWidth;
+                        flash.classList.add('flash');
+                    }
+
+                    setTimeout(() => {
+                        layer.classList.remove('active');
+                        setTimeout(() => {
+                            stage.innerHTML = '';
+                            if (onComplete) onComplete();
+                        }, 280);
+                    }, 2000);
+                }, 350);
+            }, 250);
             return;
         }
 
@@ -59,7 +136,6 @@
             const container = document.getElementById('cutin-expire-stage-container');
             const blastEl = document.getElementById('cutin-buff-expire-blast');
 
-            // 1. 解除者（自分）：常に画面の中心座標（50%）に完全固定
             const selfUnit = document.createElement('div');
             selfUnit.className = 'cutin-expire-self-unit';
             selfUnit.id = 'cutin-expire-self';
@@ -73,17 +149,15 @@
 
             const defenderUnitMap = {};
 
-            // 2. 人数に応じた中央基準オフセット（X座標）の定義
             let offsets = [];
             if (victimCount === 1) {
-                offsets = [150]; // [自分(中央)] ── [対象A(右)]
+                offsets = [150];
             } else if (victimCount === 2) {
-                offsets = [-160, 160]; // [対象A(左)] ── [自分(中央)] ── [対象B(右)]
+                offsets = [-160, 160];
             } else if (victimCount === 3) {
-                offsets = [-260, -130, 170]; // [対象A(左外)] ─ [対象B(左内)] ─ [自分(中央)] ─ [対象C(右)]
+                offsets = [-260, -130, 170];
             }
 
-            // 3. 対象ユニット群を中心基準で絶対オフセット配置
             victims.forEach((v, idx) => {
                 const defEl = document.createElement('div');
                 defEl.className = 'cutin-expire-defender-unit';
@@ -163,7 +237,7 @@
             return;
         }
 
-        // 1. ステージ初期化
+        // 1. 通常攻撃用ステージ初期化
         stage.innerHTML = `
             <div class="cutin-attacker-unit" id="cutin-attacker" style="${isDiamondSword ? 'display: none !important;' : ''}">
                 <div class="cutin-attacker-info">
@@ -371,10 +445,6 @@
                             blowClass = 'blow-straight-up';
                         } else if (totalDefs === 2) {
                             blowClass = (defIdx === 0) ? 'blow-left-up' : 'blow-right-up';
-                        } else if (totalDefs === 3) {
-                            if (defIdx === 0) blowClass = 'blow-left-up';
-                            else if (defIdx === 1) blowClass = 'blow-straight-up';
-                            else blowClass = 'blow-right-up';
                         } else {
                             if (defIdx === 0) blowClass = 'blow-left-up';
                             else if (defIdx === totalDefs - 1) blowClass = 'blow-right-up';
@@ -382,21 +452,27 @@
                         }
 
                         if (v.result === 'PROTECTED') {
-                            if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
+                            if (vCard && v.hasDefenseCard) {
+                                vCard.classList.add('broken');
+                            }
                             if (vAura) vAura.classList.add('show');
                             if (vBadge) {
                                 vBadge.innerText = v.protectText || '無敵！';
                                 vBadge.className = 'cutin-result-badge badge-invincible show';
                             }
                         } else if (v.result === 'DODGE') {
-                            if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
+                            if (vCard && v.hasDefenseCard) {
+                                vCard.classList.add('broken');
+                            }
                             if (vBadge) {
                                 vBadge.innerText = '回避！';
                                 vBadge.className = 'cutin-result-badge badge-dodge show';
                             }
                             vUnit.classList.add('dodge-action');
                         } else {
-                            if (vCard && v.hasDefenseCard) vCard.classList.add('broken');
+                            if (vCard && v.hasDefenseCard) {
+                                vCard.classList.add('broken');
+                            }
                             if (vBadge) {
                                 vBadge.innerText = '命中！';
                                 vBadge.className = 'cutin-result-badge badge-hit show';

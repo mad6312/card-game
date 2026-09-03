@@ -251,7 +251,6 @@ function proceedToNextTurn() {
             } else {
                 p.timeBombTurns -= 1;
                 if (p.timeBombTurns === 0) {
-                    // 時限爆弾爆発直前の手札緊急自動発動判定
                     const autoRes = battle.tryAutoTriggerDefense(gameState, p, {
                         allowSteroid: true,
                         isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
@@ -636,6 +635,7 @@ io.on('connection', (socket) => {
             player.playedDarkMatterThisTurn = true;
             player.hand.splice(cardIndex, 1);
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
+            if (player.darknessTurns > 0) player.darknessTurns = 0; // 暗闇即時解除
             battle.executeDarkMatter(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
             return;
         }
@@ -673,6 +673,7 @@ io.on('connection', (socket) => {
             player.invincibleSource = 'ARMOR';
             player.armorRevealed = false;
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
+            if (player.darknessTurns > 0) player.darknessTurns = 0; // 暗闇即時解除
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「無敵アーマー」を使用しました。4ターンの間「無敵状態」になります。`));
@@ -681,13 +682,14 @@ io.on('connection', (socket) => {
             player.steroidTurns = 4;
             player.steroidRevealed = false;
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
+            if (player.darknessTurns > 0) player.darknessTurns = 0; // 暗闇即時解除
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「ステロイド」を使用しました。4ターンの間「ステロイド状態」になります。`));
             socket.broadcast.emit('syncGameState', getSyncPayload(''));
         } else if (card.id === 'smoke_screen') {
             player.hand.splice(cardIndex, 1);
-            battle.executeSmokeScreen(gameState, socket.id, broadcastGameState, isImmuneToRound1CardEffect);
+            battle.executeSmokeScreen(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (actionTarget === 'ATTACK') {
             if (!targetPlayerId) {
                 socket.emit('errorMessage', '攻撃対象を選択してください。');
