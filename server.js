@@ -51,6 +51,7 @@ function getSyncPayload(customLog = '') {
         round: gameState.round,
         turnPhase: gameState.turnPhase,
         showOtherPlayersInfo: showOtherPlayersInfo,
+        skipBonusModal: skipBonusModal,
         log: customLog
     };
 }
@@ -387,6 +388,7 @@ io.on('connection', (socket) => {
         io.emit('playerUpdate', { playerCount: Object.keys(gameState.players).length });
         socket.emit('updateCardSettings', cardSettings);
         socket.emit('updatePublicInfoSetting', showOtherPlayersInfo);
+        socket.emit('updateBonusSkipSetting', skipBonusModal);
 
         if (Object.keys(gameState.players).length === 4) {
             skipDraftAndStartGame();
@@ -433,6 +435,12 @@ io.on('connection', (socket) => {
         showOtherPlayersInfo = enabled;
         io.emit('updatePublicInfoSetting', showOtherPlayersInfo);
         broadcastGameState(`[デバッグ] 他プレイヤー情報（手札・防御）を「${enabled ? '公開' : '非公開'}」に設定しました。`);
+    });
+
+    socket.on('toggleBonusSkipSetting', (enabled) => {
+        skipBonusModal = enabled;
+        io.emit('updateBonusSkipSetting', skipBonusModal);
+        broadcastGameState(`[デバッグ] ボーナススキップを「${enabled ? 'ON' : 'OFF'}」に設定しました。`);
     });
 
     socket.on('debugUpdateScore', ({ targetPlayerId, amount, setDirect }) => {
@@ -499,12 +507,6 @@ io.on('connection', (socket) => {
             if (gameState.draft.timer) clearTimeout(gameState.draft.timer);
             resolveDraft();
         }
-    });
-
-    socket.emit('updateBonusSkipSetting', skipBonusModal);
-    socket.on('toggleBonusSkipSetting', (enabled) => {
-        skipBonusModal = enabled;
-        io.emit('updateBonusSkipSetting', skipBonusModal);
     });
 
     socket.on('chooseBonus', (data) => {
@@ -635,7 +637,7 @@ io.on('connection', (socket) => {
             player.playedDarkMatterThisTurn = true;
             player.hand.splice(cardIndex, 1);
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
-            if (player.darknessTurns > 0) player.darknessTurns = 0; // 暗闇即時解除
+            if (player.darknessTurns > 0) player.darknessTurns = 0;
             battle.executeDarkMatter(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
             return;
         }
@@ -673,7 +675,7 @@ io.on('connection', (socket) => {
             player.invincibleSource = 'ARMOR';
             player.armorRevealed = false;
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
-            if (player.darknessTurns > 0) player.darknessTurns = 0; // 暗闇即時解除
+            if (player.darknessTurns > 0) player.darknessTurns = 0;
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「無敵アーマー」を使用しました。4ターンの間「無敵状態」になります。`));
@@ -682,7 +684,7 @@ io.on('connection', (socket) => {
             player.steroidTurns = 4;
             player.steroidRevealed = false;
             if (player.timeBombTurns > 0) player.timeBombTurns = 0;
-            if (player.darknessTurns > 0) player.darknessTurns = 0; // 暗闇即時解除
+            if (player.darknessTurns > 0) player.darknessTurns = 0;
             player.hand.splice(cardIndex, 1);
 
             socket.emit('syncGameState', getSyncPayload(`「ステロイド」を使用しました。4ターンの間「ステロイド状態」になります。`));

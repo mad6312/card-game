@@ -136,6 +136,17 @@ function togglePublicInfo(enabled) {
     socket.emit('togglePublicInfoSetting', enabled);
 }
 
+socket.on('updateBonusSkipSetting', (enabled) => {
+    skipBonusModal = enabled;
+    const checkEl = document.getElementById('debug-skip-bonus-check');
+    const textEl = document.getElementById('debug-skip-bonus-text');
+    if (checkEl) checkEl.checked = enabled;
+    if (textEl) {
+        textEl.innerText = enabled ? 'ON' : 'OFF';
+        textEl.style.color = enabled ? '#2ecc71' : '#e74c3c';
+    }
+});
+
 socket.on('showCutIn', (data) => {
     window.closeDropActionModal();
     window.closeTimeBombModal();
@@ -300,6 +311,16 @@ socket.on('syncGameState', (data) => {
 
     if (typeof data.showOtherPlayersInfo !== 'undefined') {
         showOtherPlayersInfo = data.showOtherPlayersInfo;
+    }
+    if (typeof data.skipBonusModal !== 'undefined') {
+        skipBonusModal = data.skipBonusModal;
+        const checkEl = document.getElementById('debug-skip-bonus-check');
+        const textEl = document.getElementById('debug-skip-bonus-text');
+        if (checkEl) checkEl.checked = skipBonusModal;
+        if (textEl) {
+            textEl.innerText = skipBonusModal ? 'ON' : 'OFF';
+            textEl.style.color = skipBonusModal ? '#2ecc71' : '#e74c3c';
+        }
     }
     document.getElementById('status').innerText = '';
 

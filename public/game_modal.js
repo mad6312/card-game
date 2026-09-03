@@ -6,8 +6,8 @@
 (function (window) {
     'use strict';
 
-    // 命中率計算ユーティリティ：下位全員
-    function calculateLowerTargetsHitRates(lowerPlayers, isDarkness = false) {
+    // 命中率計算ユーティリティ：下位全員（基準命中率 baseRate に対応）
+    function calculateLowerTargetsHitRates(lowerPlayers, isDarkness = false, baseRate = 0.5) {
         if (!lowerPlayers || lowerPlayers.length === 0) return [];
 
         const sorted = [...lowerPlayers].sort((a, b) => b.score - a.score);
@@ -27,8 +27,8 @@
 
         groups.forEach(group => {
             const m = group.players.length;
-            const baseProb = 0.5 * darknessMult;
-            const groupHitProb = pMiss * (1 - Math.pow(1 - baseProb, m));
+            const effectiveProb = baseRate * darknessMult;
+            const groupHitProb = pMiss * (1 - Math.pow(1 - effectiveProb, m));
             const individualHitProb = groupHitProb / m;
 
             group.players.forEach(p => {
@@ -36,7 +36,7 @@
                 result.push({ player: p, hitRate: ratePercent });
             });
 
-            pMiss = pMiss * Math.pow(1 - baseProb, m);
+            pMiss = pMiss * Math.pow(1 - effectiveProb, m);
         });
 
         return result;
@@ -421,7 +421,7 @@
             }
         }
 
-        // 3. グレネード
+        // 3. グレネード（下位全員: 基準80%, 暗闇40% / 単体: 基準50%, 暗闇25%）
         if (cardId === 'grenade') {
             if (selectEl.value === 'ALL_LOWER' && myPlayer) {
                 const candidates = allPlayers.filter(p => {
@@ -430,7 +430,7 @@
                     return diff >= 1 && diff <= 5000;
                 });
                 if (candidates.length > 0) {
-                    const hitRates = calculateLowerTargetsHitRates(candidates, isDarkness);
+                    const hitRates = calculateLowerTargetsHitRates(candidates, isDarkness, 0.8);
                     const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                 } else {
@@ -472,7 +472,7 @@
             if (selectEl.value === 'ALL_LOWER' && myPlayer) {
                 const lowerCandidates = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !window.isLaterPlayerInRound1(window.myId, p.id));
                 if (lowerCandidates.length > 0) {
-                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness);
+                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness, 0.5);
                     const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                 } else {
@@ -760,7 +760,7 @@
                     const lowerCandidates = allPlayers.filter(p => p.id !== window.myId && (!p.immunityCount || p.immunityCount <= 0) && !window.isLaterPlayerInRound1(window.myId, p.id) && (myScore - p.score) >= 1 && (myScore - p.score) <= 5000);
                     if (lowerCandidates.length > 0) {
                         hasValidTarget = true;
-                        const hitRates = calculateLowerTargetsHitRates(lowerCandidates, myPlayer.darknessTurns > 0);
+                        const hitRates = calculateLowerTargetsHitRates(lowerCandidates, myPlayer.darknessTurns > 0, 0.8);
                         targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerCandidates.map(p => p.name).join(',')})</option>`;
                     }
                 } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set' || card.id === 'shotgun') {
@@ -786,7 +786,7 @@
                             const { rateDetailStr, groupStr } = calculateWoodSwordSetGroupHitRates(lowerPlayers, myScore, 1, isDarkness);
                             targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                         } else {
-                            const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness);
+                            const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
                             targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerPlayers.map(p => p.name).join(',')})</option>`;
                         }
                     }
@@ -895,7 +895,7 @@
                 const lowerCandidates = allPlayers.filter(p => p.id !== window.myId && (!p.immunityCount || p.immunityCount <= 0) && !window.isLaterPlayerInRound1(window.myId, p.id) && (myScore - p.score) >= 1 && (myScore - p.score) <= 5000);
                 if (lowerCandidates.length > 0) {
                     hasValidTarget = true;
-                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, myPlayer.darknessTurns > 0);
+                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, myPlayer.darknessTurns > 0, 0.8);
                     targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerCandidates.map(p => p.name).join(',')})</option>`;
                 }
             } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set') {
@@ -921,7 +921,7 @@
                         const { rateDetailStr, groupStr } = calculateWoodSwordSetGroupHitRates(lowerPlayers, myScore, 1, isDarkness);
                         targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                     } else {
-                        const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness);
+                        const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
                         targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerPlayers.map(p => p.name).join(',')})</option>`;
                     }
                 }
