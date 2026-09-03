@@ -472,7 +472,7 @@
             if (selectEl.value === 'ALL_LOWER' && myPlayer) {
                 const lowerCandidates = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !window.isLaterPlayerInRound1(window.myId, p.id));
                 if (lowerCandidates.length > 0) {
-                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness, 0.5);
+                    const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
                     const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                 } else {
@@ -613,8 +613,9 @@
                     const prevMyScore = myPlayer.score;
                     const newMyScore = prevMyScore + 5000;
 
+                    // 無敵・ステロイド状態のプレイヤーも除外せずペナルティ対象リストに含める
                     const penaltyTargets = allPlayers.filter(p => {
-                        if (p.id === window.myId || window.isLaterPlayerInRound1(window.myId, p.id) || p.invincibleTurns > 0 || (p.immunityCount && p.immunityCount > 0)) return false;
+                        if (p.id === window.myId || window.isLaterPlayerInRound1(window.myId, p.id) || (p.immunityCount && p.immunityCount > 0)) return false;
                         return (p.score === prevMyScore) || (p.score > prevMyScore && newMyScore >= p.score);
                     });
 
