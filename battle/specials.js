@@ -44,6 +44,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
     const affectedLogs = [];
     const pendingDarkMatterResolvers = [];
 
+    // 1. まずダイヤの剣の全被弾処理を実行
     targetPlayers.forEach(target => {
         if (target.id !== casterSocketId && isImmuneToRound1CardEffect(target.id, casterSocketId)) {
             affectedLogs.push(`${target.name}(1巡目効果無効)`);
@@ -54,6 +55,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         const isSteroid = target.steroidTurns && target.steroidTurns > 0;
         const isImmune = target.immunityCount && target.immunityCount > 0;
 
+        // 1. すでに「無敵状態」「ステロイド状態」「選択不可状態」の場合（お守りは温存）
         if (isInvincible || isSteroid || isImmune) {
             if (isInvincible && target.invincibleSource === 'ARMOR') target.armorRevealed = true;
             if (isSteroid) target.steroidRevealed = true;
@@ -76,6 +78,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             return;
         }
 
+        // 2. お守り系カードの自動消費（セット中防御カード全破棄）
         const obanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_oban') : -1;
         const kobanSetIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban_set') : -1;
         const kobanIndex = target.hand ? target.hand.findIndex(c => c.id === 'omamori_koban') : -1;
@@ -110,6 +113,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
             return;
         }
 
+        // 3. お守りがない場合：ステロイド/無敵アーマー/ダークマターの手札自動発動チェック
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             isImmuneToRound1CardEffect: isImmuneToRound1CardEffect,
@@ -146,6 +150,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
         }
     });
 
+    // 2. ダイヤの剣処理完了後にダークマターペナルティを遅延解決
     const pendingDarkMatterCutins = [];
     pendingDarkMatterResolvers.forEach(resolver => {
         const res = resolver(gameState, io);
@@ -185,7 +190,7 @@ function executeDiamondSword(gameState, casterSocketId, io, broadcastGameState, 
     }, duration);
 }
 
-// 地震
+// 地震（演出終了後に確実にLP変動を同期）
 function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
@@ -262,10 +267,10 @@ function executeEarthquake(gameState, casterSocketId, io, broadcastGameState, is
         setTimeout(() => {
             broadcastGameState(`${caster.name} が「地震」を発動！ (対象: ${affectedLogs.join(' / ')})`);
         }, duration);
-    }, 2000);
+    }, 2500); // 演出終了後に確定
 }
 
-// 大災害（※仕様により手札自動発動の対象外）
+// 大災害（ステロイド保持者は防御しステロイドのみ解除、演出終了後に確実にLP変動を同期）
 function executeDisasterAttack(gameState, casterSocketId, io, broadcastGameState, isImmuneToRound1CardEffect) {
     const caster = gameState.players[casterSocketId];
     if (!caster) return;
@@ -297,6 +302,7 @@ function executeDisasterAttack(gameState, casterSocketId, io, broadcastGameState
             const isSteroid = player.steroidTurns && player.steroidTurns > 0;
             const isImmune = player.immunityCount && player.immunityCount > 0;
 
+            // ステロイド状態は大災害（ダメージ・カード破棄）を防御し、ステロイド状態が即時強制解除される
             if (isSteroid) {
                 player.steroidTurns = 0;
                 player.steroidRevealed = false;
@@ -319,7 +325,7 @@ function executeDisasterAttack(gameState, casterSocketId, io, broadcastGameState
         });
 
         broadcastGameState(`${caster.name} が「大災害」を発動！`);
-    }, 2000);
+    }, 2500); // 演出終了後に確定
 }
 
 // ダークマター（闇の広域爆発カットイン完全同期・選択不可除外対応）
@@ -512,7 +518,6 @@ function executeSmokeScreen(gameState, casterSocketId, io, broadcastGameState, i
         const statusSuffix = anySuccess ? " (-1,000点 & 暗闇付与)" : "";
         logMsg = `${caster.name} が「煙幕」を使用！ 対象: ${affectedNames.join(', ')}${statusSuffix}`;
     } else {
-        // 該当者がいないため自身に跳ね返る場合
         const isInvincible = caster.invincibleTurns && caster.invincibleTurns > 0;
         const isSteroid = caster.steroidTurns && caster.steroidTurns > 0;
 

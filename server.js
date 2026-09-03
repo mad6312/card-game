@@ -807,40 +807,6 @@ io.on('connection', (socket) => {
             } else if (card.id === 'shotgun') {
                 player.hand.splice(cardIndex, 1);
                 battle.executeShotgunAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
-            } else {
-                const target = gameState.players[targetPlayerId];
-                if (!target) {
-                    socket.emit('errorMessage', '対象となるプレイヤーが見つかりません。');
-                    return;
-                }
-
-                if (target.immunityCount && target.immunityCount > 0) {
-                    socket.emit('errorMessage', `${target.name} は現在「選択不可状態」のため攻撃できません。`);
-                    return;
-                }
-
-                if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
-
-                if (card.id === 'wood_shield_set') {
-                    let cardObj = player.hand[cardIndex];
-                    if (!cardObj.usesLeft) cardObj.usesLeft = 3;
-
-                    const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
-                    const actualAttacks = Math.min(requestedCount, cardObj.usesLeft);
-
-                    battle.executeShieldSetAttack(gameState, socket.id, targetPlayerId, cardObj, actualAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, () => {
-                        setTimeout(() => {
-                            if (cardObj.usesLeft <= 0) {
-                                const idx = player.hand.findIndex(c => String(c.instanceId) === String(cardObj.instanceId));
-                                if (idx !== -1) player.hand.splice(idx, 1);
-                            }
-                            broadcastGameState();
-                        }, 550);
-                    });
-                } else {
-                    player.hand.splice(cardIndex, 1);
-                    battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect);
-                }
             }
         } else if (actionTarget === 'DEFENSE') {
             if (player.defenseCard) {
@@ -996,36 +962,6 @@ io.on('connection', (socket) => {
                 battle.executeWoodSwordAttack(gameState, socket.id, targetPlayerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket);
                 return;
             }
-        }
-
-        if (!targetPlayerId || !gameState.players[targetPlayerId] || targetPlayerId === socket.id) {
-            socket.emit('errorMessage', '攻撃対象を選択してください。');
-            return;
-        }
-
-        const target = gameState.players[targetPlayerId];
-        if (target.immunityCount && target.immunityCount > 0) {
-            socket.emit('errorMessage', `${target.name} は現在「選択不可状態」のため攻撃できません。`);
-            return;
-        }
-
-        if (emitIfCannotSelectRound1Target(socket, socket.id, targetPlayerId)) return;
-
-        if (card.id === 'wood_shield_set') {
-            const requestedCount = Math.min(Math.max(Number(attackCount) || 1, 1), 3);
-            const actualAttacks = Math.min(requestedCount, defObj.usesLeft);
-
-            battle.executeShieldSetAttack(gameState, socket.id, targetPlayerId, defObj, actualAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, () => {
-                setTimeout(() => {
-                    card.usesLeft = defObj.usesLeft;
-                    if (defObj.usesLeft <= 0) player.defenseCard = null;
-                    broadcastGameState();
-                }, 550);
-            });
-        } else {
-            defObj.usesLeft -= 1;
-            if (defObj.usesLeft <= 0) player.defenseCard = null;
-            battle.executeStandardAttack(gameState, socket.id, targetPlayerId, card.id, io, broadcastGameState, skipIfImmuneToRound1CardEffect);
         }
     });
 

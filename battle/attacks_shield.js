@@ -11,6 +11,7 @@ const {
 } = require('./common');
 
 const { tryAutoTriggerDefense } = require('./triggers');
+const { tryAutoSetAndBlockDefense } = require('./auto_defense');
 const { executeGrenadeDefenseCounter } = require('./attacks_gun');
 
 // 青銅の盾（単体最寄：カットイン完全同期）
@@ -44,21 +45,29 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
     let finalLog = '';
     let pendingDarkMatterCutin = null;
 
-    if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-        target.defenseCard.usesLeft -= 1;
-        target.defenseCard.revealed = true;
-        defImg = target.defenseCard.card.image || '/images/wood_shield.png';
-        let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-        if (target.defenseCard.card.id === 'grenade') {
-            executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-        }
-        if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-            target.defenseCard = null;
-            msg += '（相手の防御カード破棄）';
-        }
-        finalLog = msg;
+    // 1. 防御カード判定（セット中または手札からの自動セット）
+    const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
+    const defResult = (!isTargetBuffed || target.defenseCard)
+        ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
+            onGrenadeCounter: (gs, tid) => executeGrenadeDefenseCounter(gs, tid, broadcastGameState),
+            broadcastGameState: broadcastGameState
+        })
+        : { blocked: false };
+
+    if (defResult.blocked) {
+        defImg = defResult.defImg;
+        finalLog = logPrefix + `命中！ ${defResult.defMsg}`;
         cutinRes = 'BLOCK';
+    } else if (target.steroidTurns && target.steroidTurns > 0) {
+        target.steroidRevealed = true;
+        finalLog = logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`;
+        cutinRes = 'STEROID';
+    } else if (target.invincibleTurns && target.invincibleTurns > 0) {
+        if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+        finalLog = logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`;
+        cutinRes = 'INVINCIBLE';
     } else {
+        // 手札カウンター（ステロイド/無敵アーマー/ダークマター）判定
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -68,17 +77,12 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
         if (autoRes) {
             cutinRes = autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
             finalLog = logPrefix + `命中！しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoRes.logMsg})`;
-            if (autoRes.darkMatterCutinData) {
-                pendingDarkMatterCutin = autoRes.darkMatterCutinData;
+            if (autoRes.resolveDarkMatterPenalty) {
+                const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                if (dmRes && dmRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                }
             }
-        } else if (target.steroidTurns && target.steroidTurns > 0) {
-            target.steroidRevealed = true;
-            finalLog = logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`;
-            cutinRes = 'STEROID';
-        } else if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            finalLog = logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`;
-            cutinRes = 'INVINCIBLE';
         } else {
             let blockedNotice = (target.defenseCard && isDefenseBlocked(target, attacker)) ? ` (セット中「${target.defenseCard.card.name}」は格上攻撃のため貫通！)` : '';
             applyScoreChange(target, -3000);
@@ -89,7 +93,6 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
     }
 
     if (io) {
-        // 1. まず元の攻撃カットイン（青銅の盾）をemit
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -109,7 +112,6 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
             results: [{ targetId: target.id, result: cutinRes, defCardImage: defImg }]
         });
 
-        // 2. 続いて自動発動したダークマターのカットインをemit
         if (pendingDarkMatterCutin) {
             io.emit('playAttackCutin', pendingDarkMatterCutin);
         }
@@ -189,36 +191,18 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
             continue;
         }
 
-        if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-            const defImg = target.defenseCard.card.image || '/images/wood_shield.png';
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            let msg = `${attacker.name} の「青銅の盾」攻撃！ しかし ${target.name} の防御カード「${target.defenseCard.card.name}」で無効化されました！（攻撃終了）`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            finalLog = msg;
-            cutinResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defImg });
-            stoppedEarly = true;
-            break;
-        }
+        // 防御カード判定（セット中または手札からの自動セット）
+        const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
+        const defResult = (!isTargetBuffed || target.defenseCard)
+            ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
+                onGrenadeCounter: (gs, tid) => executeGrenadeDefenseCounter(gs, tid, broadcastGameState),
+                broadcastGameState: broadcastGameState
+            })
+            : { blocked: false };
 
-        const autoRes = tryAutoTriggerDefense(gameState, target, {
-            allowSteroid: true,
-            isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
-            broadcastGameState: broadcastGameState
-        });
-
-        if (autoRes) {
-            cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
-            finalLog = `${attacker.name} の「青銅の盾」攻撃！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃終了）\n(${autoRes.logMsg})`;
-            if (autoRes.darkMatterCutinData) {
-                pendingDarkMatterCutin = autoRes.darkMatterCutinData;
-            }
+        if (defResult.blocked) {
+            finalLog = `${attacker.name} の「青銅の盾」攻撃！ ${defResult.defMsg}（攻撃終了）`;
+            cutinResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defResult.defImg });
             stoppedEarly = true;
             break;
         }
@@ -239,6 +223,26 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
             break;
         }
 
+        // 手札カウンター判定
+        const autoRes = tryAutoTriggerDefense(gameState, target, {
+            allowSteroid: true,
+            isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
+            broadcastGameState: broadcastGameState
+        });
+
+        if (autoRes) {
+            cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
+            finalLog = `${attacker.name} の「青銅の盾」攻撃！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃終了）\n(${autoRes.logMsg})`;
+            if (autoRes.resolveDarkMatterPenalty) {
+                const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                if (dmRes && dmRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                }
+            }
+            stoppedEarly = true;
+            break;
+        }
+
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
         finalLog = `${attacker.name} の「青銅の盾」攻撃 (対象: ${target.name})！ (命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃終了)`;
@@ -252,7 +256,6 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
     }
 
     if (io) {
-        // 1. 元の攻撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -268,7 +271,6 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
             results: cutinResults
         });
 
-        // 2. 自動発動したダークマターのカットイン
         if (pendingDarkMatterCutin) {
             io.emit('playAttackCutin', pendingDarkMatterCutin);
         }
@@ -334,21 +336,31 @@ function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks
         let cutinRes = 'HIT';
         let defImg = null;
 
-        if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            defImg = target.defenseCard.card.image || '/images/wood_shield.png';
-            let msg = logPrefix + `命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            logs.push(msg);
+        // 防御カード判定（セット中または手札からの自動セット）
+        const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
+        const defResult = (!isTargetBuffed || target.defenseCard)
+            ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
+                onGrenadeCounter: (gs, tid) => executeGrenadeDefenseCounter(gs, tid, broadcastGameState),
+                broadcastGameState: broadcastGameState
+            })
+            : { blocked: false };
+
+        if (defResult.blocked) {
+            defImg = defResult.defImg;
+            logs.push(logPrefix + `命中！ ${defResult.defMsg}`);
             cutinRes = 'BLOCK';
+        } else if (target.steroidTurns && target.steroidTurns > 0) {
+            target.steroidRevealed = true;
+            logs.push(logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（連撃中断）`);
+            cutinRes = 'STEROID';
+            stoppedByInvincible = true;
+        } else if (target.invincibleTurns && target.invincibleTurns > 0) {
+            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
+            logs.push(logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
+            cutinRes = 'INVINCIBLE';
+            stoppedByInvincible = true;
         } else {
+            // 手札カウンター判定
             const autoRes = tryAutoTriggerDefense(gameState, target, {
                 allowSteroid: true,
                 isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -358,19 +370,12 @@ function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks
             if (autoRes) {
                 cutinRes = autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE';
                 logs.push(logPrefix + `命中！しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
-                if (autoRes.darkMatterCutinData) {
-                    pendingDarkMatterCutin = autoRes.darkMatterCutinData;
+                if (autoRes.resolveDarkMatterPenalty) {
+                    const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                    if (dmRes && dmRes.darkMatterCutinData) {
+                        pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                    }
                 }
-                stoppedByInvincible = true;
-            } else if (target.steroidTurns && target.steroidTurns > 0) {
-                target.steroidRevealed = true;
-                logs.push(logPrefix + `命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！（連撃中断）`);
-                cutinRes = 'STEROID';
-                stoppedByInvincible = true;
-            } else if (target.invincibleTurns && target.invincibleTurns > 0) {
-                if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-                logs.push(logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
-                cutinRes = 'INVINCIBLE';
                 stoppedByInvincible = true;
             } else {
                 let blockedNotice = (target.defenseCard && isDefenseBlocked(target, attacker)) ? ` (セット中「${target.defenseCard.card.name}」は格上攻撃のため貫通！)` : '';
@@ -388,7 +393,6 @@ function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks
     }
 
     if (io) {
-        // 1. 元の連撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -404,7 +408,6 @@ function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks
             rounds: rounds
         });
 
-        // 2. 自動発動したダークマターのカットイン
         if (pendingDarkMatterCutin) {
             io.emit('playAttackCutin', pendingDarkMatterCutin);
         }
@@ -504,37 +507,18 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
                 continue;
             }
 
-            if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-                const defImg = target.defenseCard.card.image || '/images/wood_shield.png';
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = `${attacker.name} の「青銅の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                logs.push(msg);
-                currentRoundResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defImg });
-                hitInThisRound = true;
-                break;
-            }
+            // 防御カード判定（セット中または手札からの自動セット）
+            const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
+            const defResult = (!isTargetBuffed || target.defenseCard)
+                ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
+                    onGrenadeCounter: (gs, tid) => executeGrenadeDefenseCounter(gs, tid, broadcastGameState),
+                    broadcastGameState: broadcastGameState
+                })
+                : { blocked: false };
 
-            const autoRes = tryAutoTriggerDefense(gameState, target, {
-                allowSteroid: true,
-                isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
-                broadcastGameState: broadcastGameState
-            });
-
-            if (autoRes) {
-                currentRoundResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
-                logs.push(`${attacker.name} の「青銅の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
-                if (autoRes.darkMatterCutinData) {
-                    pendingDarkMatterCutin = autoRes.darkMatterCutinData;
-                }
-                stoppedByInvincible = true;
+            if (defResult.blocked) {
+                logs.push(`${attacker.name} の「青銅の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ ${defResult.defMsg}`);
+                currentRoundResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defResult.defImg });
                 hitInThisRound = true;
                 break;
             }
@@ -552,6 +536,27 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
                 if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 logs.push(`${attacker.name} の「青銅の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
                 currentRoundResults.push({ targetId: target.id, result: 'INVINCIBLE' });
+                stoppedByInvincible = true;
+                hitInThisRound = true;
+                break;
+            }
+
+            // 手札カウンター判定
+            const autoRes = tryAutoTriggerDefense(gameState, target, {
+                allowSteroid: true,
+                isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
+            if (autoRes) {
+                currentRoundResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
+                logs.push(`${attacker.name} の「青銅の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
+                if (autoRes.resolveDarkMatterPenalty) {
+                    const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                    if (dmRes && dmRes.darkMatterCutinData) {
+                        pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                    }
+                }
                 stoppedByInvincible = true;
                 hitInThisRound = true;
                 break;
@@ -576,7 +581,6 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
     }
 
     if (io) {
-        // 1. 元の連撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -592,7 +596,6 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
             rounds: rounds
         });
 
-        // 2. 自動発動したダークマターのカットイン
         if (pendingDarkMatterCutin) {
             io.emit('playAttackCutin', pendingDarkMatterCutin);
         }
@@ -674,36 +677,18 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
             continue;
         }
 
-        if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-            const defImg = target.defenseCard.card.image || '/images/wood_shield.png';
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            let msg = `${attacker.name} の「木の盾」攻撃！ しかし ${target.name} の防御カード「${target.defenseCard.card.name}」で無効化されました！（攻撃中断）`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            finalLog = msg;
-            cutinResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defImg });
-            stoppedEarly = true;
-            break;
-        }
+        // 防御カード判定（セット中または手札からの自動セット）
+        const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
+        const defResult = (!isTargetBuffed || target.defenseCard)
+            ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
+                onGrenadeCounter: (gs, tid) => executeGrenadeDefenseCounter(gs, tid, broadcastGameState),
+                broadcastGameState: broadcastGameState
+            })
+            : { blocked: false };
 
-        const autoRes = tryAutoTriggerDefense(gameState, target, {
-            allowSteroid: true,
-            isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
-            broadcastGameState: broadcastGameState
-        });
-
-        if (autoRes) {
-            cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
-            finalLog = `${attacker.name} の「木の盾」攻撃！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃中断）\n(${autoRes.logMsg})`;
-            if (autoRes.darkMatterCutinData) {
-                pendingDarkMatterCutin = autoRes.darkMatterCutinData;
-            }
+        if (defResult.blocked) {
+            finalLog = `${attacker.name} の「木の盾」攻撃！ ${defResult.defMsg}（攻撃中断）`;
+            cutinResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defResult.defImg });
             stoppedEarly = true;
             break;
         }
@@ -724,6 +709,26 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
             break;
         }
 
+        // 手札カウンター判定
+        const autoRes = tryAutoTriggerDefense(gameState, target, {
+            allowSteroid: true,
+            isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
+            broadcastGameState: broadcastGameState
+        });
+
+        if (autoRes) {
+            cutinResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
+            finalLog = `${attacker.name} の「木の盾」攻撃！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（攻撃中断）\n(${autoRes.logMsg})`;
+            if (autoRes.resolveDarkMatterPenalty) {
+                const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                if (dmRes && dmRes.darkMatterCutinData) {
+                    pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                }
+            }
+            stoppedEarly = true;
+            break;
+        }
+
         applyScoreChange(target, -3000);
         target.immunityCount = 2;
         finalLog = `${attacker.name} の「木の盾」攻撃 (対象: ${target.name})！ (命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃中断)`;
@@ -737,7 +742,6 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
     }
 
     if (io) {
-        // 1. 元の攻撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -753,7 +757,6 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
             results: cutinResults
         });
 
-        // 2. 自動発動したダークマターのカットイン
         if (pendingDarkMatterCutin) {
             io.emit('playAttackCutin', pendingDarkMatterCutin);
         }
@@ -853,37 +856,18 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
                 continue;
             }
 
-            if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-                const defImg = target.defenseCard.card.image || '/images/wood_shield.png';
-                target.defenseCard.usesLeft -= 1;
-                target.defenseCard.revealed = true;
-                let msg = `${attacker.name} の「木の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-                if (target.defenseCard.card.id === 'grenade') {
-                    executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-                }
-                if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                    target.defenseCard = null;
-                    msg += '（相手の防御カード破棄）';
-                }
-                logs.push(msg);
-                currentRoundResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defImg });
-                hitInThisRound = true;
-                break;
-            }
+            // 防御カード判定（セット中または手札からの自動セット）
+            const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
+            const defResult = (!isTargetBuffed || target.defenseCard)
+                ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
+                    onGrenadeCounter: (gs, tid) => executeGrenadeDefenseCounter(gs, tid, broadcastGameState),
+                    broadcastGameState: broadcastGameState
+                })
+                : { blocked: false };
 
-            const autoRes = tryAutoTriggerDefense(gameState, target, {
-                allowSteroid: true,
-                isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
-                broadcastGameState: broadcastGameState
-            });
-
-            if (autoRes) {
-                currentRoundResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
-                logs.push(`${attacker.name} の「木の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
-                if (autoRes.darkMatterCutinData) {
-                    pendingDarkMatterCutin = autoRes.darkMatterCutinData;
-                }
-                stoppedByInvincible = true;
+            if (defResult.blocked) {
+                logs.push(`${attacker.name} の「木の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ ${defResult.defMsg}`);
+                currentRoundResults.push({ targetId: target.id, result: 'BLOCK', defCardImage: defResult.defImg });
                 hitInThisRound = true;
                 break;
             }
@@ -901,6 +885,27 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
                 if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
                 logs.push(`${attacker.name} の「木の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！（連撃中断）`);
                 currentRoundResults.push({ targetId: target.id, result: 'INVINCIBLE' });
+                stoppedByInvincible = true;
+                hitInThisRound = true;
+                break;
+            }
+
+            // 手札カウンター判定
+            const autoRes = tryAutoTriggerDefense(gameState, target, {
+                allowSteroid: true,
+                isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
+                broadcastGameState: broadcastGameState
+            });
+
+            if (autoRes) {
+                currentRoundResults.push({ targetId: target.id, result: autoRes.cardId === 'steroid' ? 'STEROID' : 'INVINCIBLE' });
+                logs.push(`${attacker.name} の「木の盾セット」攻撃 (${actualAttacksDone}/${maxAttacks}回目)！ しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！（連撃中断）\n(${autoRes.logMsg})`);
+                if (autoRes.resolveDarkMatterPenalty) {
+                    const dmRes = autoRes.resolveDarkMatterPenalty(gameState, io);
+                    if (dmRes && dmRes.darkMatterCutinData) {
+                        pendingDarkMatterCutin = dmRes.darkMatterCutinData;
+                    }
+                }
                 stoppedByInvincible = true;
                 hitInThisRound = true;
                 break;
@@ -925,7 +930,6 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
     }
 
     if (io) {
-        // 1. 元の連撃カットイン
         io.emit('playAttackCutin', {
             attacker: {
                 id: attacker.id,
@@ -941,7 +945,6 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
             rounds: rounds
         });
 
-        // 2. 自動発動したダークマターのカットイン
         if (pendingDarkMatterCutin) {
             io.emit('playAttackCutin', pendingDarkMatterCutin);
         }
@@ -954,101 +957,11 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
     }, totalDuration);
 }
 
-// 木の盾セット（単体攻撃）
-function executeShieldSetAttack(gameState, attackerId, targetId, cardObj, maxAttacks, broadcastGameState, skipIfImmuneToRound1CardEffect, onComplete) {
-    const attacker = gameState.players[attackerId];
-    const target = gameState.players[targetId];
-
-    if (skipIfImmuneToRound1CardEffect(target, attacker, '「木の盾セット」攻撃')) {
-        onComplete();
-        return;
-    }
-
-    const hitRate = getWoodShieldHitRate(attacker.score, target.score);
-    if (hitRate <= 0) {
-        onComplete();
-        return;
-    }
-
-    const ratePercent = Math.round(hitRate * 100);
-    let attackIndex = 0;
-
-    function doNextAttack() {
-        if (attackIndex >= maxAttacks || cardObj.usesLeft <= 0) {
-            onComplete();
-            return;
-        }
-
-        attackIndex++;
-        let logPrefix = `${attacker.name} が ${target.name} に「木の盾セット」で攻撃 (${attackIndex}/${maxAttacks}回目)！ `;
-
-        const isHit = Math.random() < hitRate;
-
-        if (!isHit) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 攻撃は外れた！（ミス）`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        cardObj.usesLeft -= 1;
-
-        if (target.defenseCard && !isDefenseBlocked(target, attacker)) {
-            target.defenseCard.usesLeft -= 1;
-            target.defenseCard.revealed = true;
-            let msg = logPrefix + `(命中率:${ratePercent}%) 命中！しかし相手の防御カード「${target.defenseCard.card.name}」で無効化されました！`;
-            if (target.defenseCard.card.id === 'grenade') {
-                executeGrenadeDefenseCounter(gameState, target.id, broadcastGameState);
-            }
-            if (target.defenseCard && target.defenseCard.usesLeft <= 0) {
-                target.defenseCard = null;
-                msg += '（相手の防御カード破棄）';
-            }
-            broadcastGameState(msg);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        const autoRes = tryAutoTriggerDefense(gameState, target, {
-            allowSteroid: true,
-            isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
-            broadcastGameState: broadcastGameState
-        });
-
-        if (autoRes) {
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} の手札から「${autoRes.cardName}」が自動発動！攻撃が無効化されました！\n(${autoRes.logMsg})`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        if (target.invincibleTurns && target.invincibleTurns > 0) {
-            if (target.invincibleSource === 'ARMOR') target.armorRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        if (target.steroidTurns && target.steroidTurns > 0) {
-            target.steroidRevealed = true;
-            broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中！しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`);
-            setTimeout(doNextAttack, 500);
-            return;
-        }
-
-        applyScoreChange(target, -3000);
-        target.immunityCount = 2;
-        broadcastGameState(logPrefix + `(命中率:${ratePercent}%) 命中ヒット！ 得点-3,000点！ (${target.name}が選択不可状態になったため攻撃中断)`);
-        onComplete();
-    }
-
-    doNextAttack();
-}
-
 module.exports = {
     executeBronzeShieldClosestAttack,
     executeBronzeShieldGroupAttack,
     executeBronzeShieldSetAttack,
     executeBronzeShieldSetGroupAttack,
     executeWoodShieldGroupAttack,
-    executeShieldSetAttack,
     executeShieldSetGroupAttack
 };
