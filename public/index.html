@@ -44,6 +44,16 @@
                     <span id="debug-public-info-text" style="color: #2ecc71; font-weight: bold;">公開 (ON)</span>
                 </label>
             </div>
+
+            <!-- デバッグドロー制限無視トグルスイッチ -->
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-weight: bold; color: #cbd5e1; font-size: 11px;">制限無視ドロー:</span>
+                <label style="cursor: pointer; font-size: 11px;">
+                    <input type="checkbox" id="debug-ignore-restrictions-check" checked
+                        onchange="toggleDrawRestrictions(this.checked)">
+                    <span id="debug-ignore-restrictions-text" style="color: #2ecc71; font-weight: bold;">ON</span>
+                </label>
+            </div>
         </div>
 
         <div id="debug-score-list" style="margin-top: 6px;">
@@ -214,7 +224,7 @@
     <script src="/scoreboard.js"></script>
     <!-- 攻撃カットイン演出制御モジュール -->
     <script src="/attackAnimation.js"></script>
-    <!-- モーダル・アクション制御モジュール（新規追加） -->
+    <!-- モーダル・アクション制御モジュール -->
     <script src="/game_modal.js"></script>
     <!-- メインフロントエンドロジック -->
     <script src="/game.js"></script>

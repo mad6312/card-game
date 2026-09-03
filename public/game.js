@@ -23,6 +23,7 @@ let lastKnownPlayerNames = {};
 let showOtherPlayersInfo = true;
 let isTimeBombModalTriggeredByEndTurn = false;
 let skipBonusModal = true;
+let ignoreDrawRestrictions = true; // デバッグドロー時の制限無視トグル
 
 window.isTimeBombModalTriggeredByEndTurn = isTimeBombModalTriggeredByEndTurn;
 
@@ -146,6 +147,25 @@ socket.on('updateBonusSkipSetting', (enabled) => {
         textEl.style.color = enabled ? '#2ecc71' : '#e74c3c';
     }
 });
+
+function toggleBonusSkip(enabled) {
+    socket.emit('toggleBonusSkipSetting', enabled);
+}
+
+socket.on('updateDrawRestrictionsSetting', (enabled) => {
+    ignoreDrawRestrictions = enabled;
+    const checkEl = document.getElementById('debug-ignore-restrictions-check');
+    const textEl = document.getElementById('debug-ignore-restrictions-text');
+    if (checkEl) checkEl.checked = enabled;
+    if (textEl) {
+        textEl.innerText = enabled ? 'ON' : 'OFF';
+        textEl.style.color = enabled ? '#2ecc71' : '#e74c3c';
+    }
+});
+
+function toggleDrawRestrictions(enabled) {
+    socket.emit('toggleDrawRestrictionsSetting', enabled);
+}
 
 socket.on('showCutIn', (data) => {
     window.closeDropActionModal();
@@ -322,6 +342,17 @@ socket.on('syncGameState', (data) => {
             textEl.style.color = skipBonusModal ? '#2ecc71' : '#e74c3c';
         }
     }
+    if (typeof data.ignoreDrawRestrictions !== 'undefined') {
+        ignoreDrawRestrictions = data.ignoreDrawRestrictions;
+        const checkEl = document.getElementById('debug-ignore-restrictions-check');
+        const textEl = document.getElementById('debug-ignore-restrictions-text');
+        if (checkEl) checkEl.checked = ignoreDrawRestrictions;
+        if (textEl) {
+            textEl.innerText = ignoreDrawRestrictions ? 'ON' : 'OFF';
+            textEl.style.color = ignoreDrawRestrictions ? '#2ecc71' : '#e74c3c';
+        }
+    }
+
     document.getElementById('status').innerText = '';
 
     const draftArea = document.getElementById('draft-area');

@@ -21,6 +21,7 @@ app.use(express.static('public'));
 let cardSettings = createInitialCardSettings();
 let showOtherPlayersInfo = true;
 let skipBonusModal = true;
+let ignoreDrawRestrictions = true; // デバッグドロー時の制限無視トグル（デフォルト: ON）
 
 function createInitialState() {
     return {
@@ -31,6 +32,12 @@ function createInitialState() {
         actedPlayerIds: [],
         round: 1,
         turnPhase: 'WAITING',
+        cardCooldowns: {
+            diamond_sword: 0,
+            earthquake: 0,
+            disaster: 0,
+            smoke_screen: 0
+        },
         draft: {
             phase: 'SELECTING',
             choices: {},
@@ -52,6 +59,7 @@ function getSyncPayload(customLog = '') {
         turnPhase: gameState.turnPhase,
         showOtherPlayersInfo: showOtherPlayersInfo,
         skipBonusModal: skipBonusModal,
+        ignoreDrawRestrictions: ignoreDrawRestrictions,
         log: customLog
     };
 }
@@ -222,6 +230,15 @@ function proceedToNextTurn() {
         }
     });
 
+    // 使用後出現制限（12Tクールダウンタイマー）の減算処理
+    if (gameState.cardCooldowns) {
+        Object.keys(gameState.cardCooldowns).forEach(cardId => {
+            if (gameState.cardCooldowns[cardId] > 0) {
+                gameState.cardCooldowns[cardId] -= 1;
+            }
+        });
+    }
+
     const expireLogs = [];
     let hasScoreChangeOnExpire = false;
 
@@ -389,6 +406,7 @@ io.on('connection', (socket) => {
         socket.emit('updateCardSettings', cardSettings);
         socket.emit('updatePublicInfoSetting', showOtherPlayersInfo);
         socket.emit('updateBonusSkipSetting', skipBonusModal);
+        socket.emit('updateDrawRestrictionsSetting', ignoreDrawRestrictions);
 
         if (Object.keys(gameState.players).length === 4) {
             skipDraftAndStartGame();
@@ -443,6 +461,12 @@ io.on('connection', (socket) => {
         broadcastGameState(`[デバッグ] ボーナススキップを「${enabled ? 'ON' : 'OFF'}」に設定しました。`);
     });
 
+    socket.on('toggleDrawRestrictionsSetting', (enabled) => {
+        ignoreDrawRestrictions = enabled;
+        io.emit('updateDrawRestrictionsSetting', ignoreDrawRestrictions);
+        broadcastGameState(`[デバッグ] デバッグドロー制限無視を「${enabled ? 'ON' : 'OFF'}」に設定しました。`);
+    });
+
     socket.on('debugUpdateScore', ({ targetPlayerId, amount, setDirect }) => {
         const target = gameState.players[targetPlayerId];
         if (!target) return;
@@ -467,7 +491,8 @@ io.on('connection', (socket) => {
         if (!target) return;
 
         battle.resetScoreChanges(gameState);
-        const randomCard = getRandomAvailableCard(target, cardSettings);
+        // デバッグドロー時はトグルスイッチの状態（ignoreDrawRestrictions）に応じて選出
+        const randomCard = getRandomAvailableCard(target, cardSettings, gameState, ignoreDrawRestrictions);
 
         if (randomCard.id === 'time_bomb') {
             battle.applyScoreChange(target, 1000);
@@ -522,7 +547,8 @@ io.on('connection', (socket) => {
             battle.applyScoreChange(player, scoreAmount);
         }
 
-        const randomCard = getRandomAvailableCard(player, cardSettings);
+        // 本番ドローは常に全制限ルールを厳格に適用（ignoreRestrictions = false）
+        const randomCard = getRandomAvailableCard(player, cardSettings, gameState, false);
         gameState.turnPhase = 'MAIN';
 
         let bonusLog = '';
@@ -663,12 +689,15 @@ io.on('connection', (socket) => {
             broadcastGameState(msg);
         } else if (card.id === 'disaster') {
             player.hand.splice(cardIndex, 1);
+            gameState.cardCooldowns.disaster = 12; // 使用後出現制限(12T)
             battle.executeDisasterAttack(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'diamond_sword') {
             player.hand.splice(cardIndex, 1);
+            gameState.cardCooldowns.diamond_sword = 12; // 使用後出現制限(12T)
             battle.executeDiamondSword(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'earthquake') {
             player.hand.splice(cardIndex, 1);
+            gameState.cardCooldowns.earthquake = 12; // 使用後出現制限(12T)
             battle.executeEarthquake(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'invincible_armor') {
             player.invincibleTurns = 4;
@@ -691,6 +720,7 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('syncGameState', getSyncPayload(''));
         } else if (card.id === 'smoke_screen') {
             player.hand.splice(cardIndex, 1);
+            gameState.cardCooldowns.smoke_screen = 12; // 使用後出現制限(12T)
             battle.executeSmokeScreen(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (actionTarget === 'ATTACK') {
             if (!targetPlayerId) {

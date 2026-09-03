@@ -1,4 +1,4 @@
-// 全19種のカード定義マスターデータ（3桁カンマ区切りテキスト対応）
+// 全19種のカード定義マスターデータ（3桁カンマ区切りテキスト・手札自動防御文言対応）
 const CARD_DECK = [
     {
         id: 'wood_shield',
@@ -173,28 +173,133 @@ function createInitialCardSettings() {
     };
 }
 
-// カードのランダム獲得ロジック（セットカード重複所持制限対応）
-function getRandomAvailableCard(player, cardSettings) {
+/**
+ * カードのランダム選定ロジック（制限ルール・デバッグバイパス完全対応）
+ * @param {Object} player ドローを行うプレイヤーオブジェクト
+ * @param {Object} cardSettings カード排出ON/OFF設定
+ * @param {Object|null} gameState ゲーム全体状態（巡目、全プレイヤー、クールダウン情報）
+ * @param {boolean} ignoreRestrictions デバッグ用制限無視フラグ（trueの場合は制限を全バイパス）
+ * @returns {Object} 決定されたカードインスタンス
+ */
+function getRandomAvailableCard(player, cardSettings, gameState = null, ignoreRestrictions = false) {
+    // 1. 基本となる排出可能カードプール（排出設定ONのカード）
     let availableCards = CARD_DECK.filter(c => cardSettings[c.id] !== false);
 
-    if (player) {
-        const setCardIds = ['wood_shield_set', 'bronze_shield_set', 'wood_sword_set'];
-        const hasAnySetInHand = player.hand && player.hand.some(c => setCardIds.includes(c.id));
-        const hasAnySetInDefense = player.defenseCard && player.defenseCard.card && setCardIds.includes(player.defenseCard.card.id);
+    // 2. 制限ルールを適用する場合（ignoreRestrictions === false かつ gameState が存在）
+    if (!ignoreRestrictions && gameState) {
+        const round = gameState.round || 1;
+        const allPlayers = Object.values(gameState.players || {});
+        const cooldowns = gameState.cardCooldowns || {};
 
-        if (hasAnySetInHand || hasAnySetInDefense) {
-            availableCards = availableCards.filter(c => !setCardIds.includes(c.id));
+        // ----------------------------------------------------
+        // A. 出現巡目制限
+        // ----------------------------------------------------
+        // 2巡目以降のみ: 青銅の盾セット, グレネード
+        if (round < 2) {
+            availableCards = availableCards.filter(c => !['bronze_shield_set', 'grenade'].includes(c.id));
         }
+        // 3巡目以降のみ: ダイヤの剣, 地震, 時限爆弾, 大災害, 煙幕
+        if (round < 3) {
+            availableCards = availableCards.filter(c => !['diamond_sword', 'earthquake', 'time_bomb', 'disaster', 'smoke_screen'].includes(c.id));
+        }
+
+        // ----------------------------------------------------
+        // B. 重複所持制限（個人単位）
+        // ----------------------------------------------------
+        if (player) {
+            // ① 3種セットカード（木の盾セット、青銅の盾セット、木の剣セット）
+            const setCardIds = ['wood_shield_set', 'bronze_shield_set', 'wood_sword_set'];
+            const hasAnySetInHand = player.hand && player.hand.some(c => setCardIds.includes(c.id));
+            const hasAnySetInDefense = player.defenseCard && player.defenseCard.card && setCardIds.includes(player.defenseCard.card.id);
+            if (hasAnySetInHand || hasAnySetInDefense) {
+                availableCards = availableCards.filter(c => !setCardIds.includes(c.id));
+            }
+
+            // ② お守り小判セット（手札所持時重複不可）
+            const hasKobanSet = player.hand && player.hand.some(c => c.id === 'omamori_koban_set');
+            if (hasKobanSet) {
+                availableCards = availableCards.filter(c => c.id !== 'omamori_koban_set');
+            }
+
+            // ③ お守り大判（手札所持時重複不可）
+            const hasOban = player.hand && player.hand.some(c => c.id === 'omamori_oban');
+            if (hasOban) {
+                availableCards = availableCards.filter(c => c.id !== 'omamori_oban');
+            }
+        }
+
+        // ----------------------------------------------------
+        // C. 重複出現制限（全プレイヤー・盤面チェック）
+        // ----------------------------------------------------
+        // ① 手札所持チェック（誰か1人でも所持していれば出現不可）
+        const handDuplicateRestrictedIds = [
+            'diamond_sword',
+            'earthquake',
+            'disaster',
+            'smoke_screen',
+            'invincible_armor',
+            'dark_matter',
+            'steroid'
+        ];
+        handDuplicateRestrictedIds.forEach(cardId => {
+            const isHeldByAnyone = allPlayers.some(p => p.hand && p.hand.some(c => c.id === cardId));
+            if (isHeldByAnyone) {
+                availableCards = availableCards.filter(c => c.id !== cardId);
+            }
+        });
+
+        // ② 状態保持者チェック
+        // 時限爆弾: 「時限爆弾状態」のプレイヤーが1人でも存在する場合
+        const hasTimeBombActive = allPlayers.some(p => p.timeBombTurns && p.timeBombTurns > 0);
+        if (hasTimeBombActive) {
+            availableCards = availableCards.filter(c => c.id !== 'time_bomb');
+        }
+
+        // 無敵アーマー: 無敵アーマーによる無敵状態のプレイヤーが1人でも存在する場合
+        const hasArmorActive = allPlayers.some(p => p.invincibleTurns && p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR');
+        if (hasArmorActive) {
+            availableCards = availableCards.filter(c => c.id !== 'invincible_armor');
+        }
+
+        // ダークマター: ダークマターによる無敵状態のプレイヤーが1人でも存在する場合
+        const hasDarkMatterActive = allPlayers.some(p => p.invincibleTurns && p.invincibleTurns > 0 && p.invincibleSource === 'DARK_MATTER');
+        if (hasDarkMatterActive) {
+            availableCards = availableCards.filter(c => c.id !== 'dark_matter');
+        }
+
+        // ステロイド: ステロイド状態のプレイヤーが1人でも存在する場合
+        const hasSteroidActive = allPlayers.some(p => p.steroidTurns && p.steroidTurns > 0);
+        if (hasSteroidActive) {
+            availableCards = availableCards.filter(c => c.id !== 'steroid');
+        }
+
+        // ----------------------------------------------------
+        // D. 使用後出現制限（12Tクールダウンタイマーチェック）
+        // ----------------------------------------------------
+        const cooldownCardIds = ['diamond_sword', 'earthquake', 'disaster', 'smoke_screen'];
+        cooldownCardIds.forEach(cardId => {
+            if (cooldowns[cardId] && cooldowns[cardId] > 0) {
+                availableCards = availableCards.filter(c => c.id !== cardId);
+            }
+        });
     }
 
-    const pool = availableCards.length > 0 ? availableCards : CARD_DECK;
+    // 3. 安全フォールバック（制限により候補が0件になった場合のクラッシュ防止）
+    let pool = availableCards;
+    if (pool.length === 0) {
+        // 制限のない基本カードを優先フォールバック
+        const fallbackPool = CARD_DECK.filter(c => ['wood_shield', 'wood_sword', 'shotgun', 'omamori_koban'].includes(c.id) && cardSettings[c.id] !== false);
+        pool = fallbackPool.length > 0 ? fallbackPool : CARD_DECK;
+    }
+
+    // 4. ランダム選出とインスタンス生成
     const template = pool[Math.floor(Math.random() * pool.length)];
     const instance = {
         ...template,
         instanceId: 'card_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
     };
 
-    if (instance.id === 'wood_shield_set' || instance.id === 'bronze_shield_set' || instance.id === 'wood_sword_set' || instance.id === 'omamori_koban_set') {
+    if (['wood_shield_set', 'bronze_shield_set', 'wood_sword_set', 'omamori_koban_set'].includes(instance.id)) {
         instance.usesLeft = 3;
     }
 
