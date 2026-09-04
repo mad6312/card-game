@@ -751,7 +751,9 @@ body {
     }
 }
 
+/* デバッグパネル（初期非表示でチラつきを100%防止） */
 .debug-score-panel {
+    display: none;
     position: fixed;
     top: 10px;
     left: 10px;

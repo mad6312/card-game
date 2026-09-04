@@ -18,8 +18,8 @@
     <!-- 常時表示スコアボードUI（画面左下固定・モーダル最前面） -->
     <div id="global-scoreboard"></div>
 
-    <!-- デバッグパネル（本番環境時は自動非表示化） -->
-    <details class="debug-score-panel" id="debug-panel-root" open>
+    <!-- デバッグパネル（初期非表示・チラつき完全防止） -->
+    <details class="debug-score-panel" id="debug-panel-root" style="display: none;" open>
         <summary>🛠 デバッグパネル</summary>
         <div
             style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; flex-direction: column; gap: 6px;">
