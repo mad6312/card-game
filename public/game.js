@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、ロビー待機エントリー、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定、リザルト連携
+ * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定、リザルト連携
  */
 
 const socket = io();
@@ -99,12 +99,19 @@ function updateLobbyUI() {
     const btn = document.getElementById('btn-join-lobby');
     const statusText = document.getElementById('status');
     const lobbyArea = document.getElementById('lobby-area');
+    const draftArea = document.getElementById('draft-area');
 
     if (!btn || !lobbyArea) return;
 
     if (latestGameState && latestGameState.started) {
         lobbyArea.style.display = 'none';
+        if (draftArea) draftArea.style.display = 'none';
         if (statusText) statusText.innerText = '';
+        return;
+    }
+
+    if (latestGameState && latestGameState.draft && latestGameState.draft.phase === 'SELECTING') {
+        lobbyArea.style.display = 'none';
         return;
     }
 
@@ -130,6 +137,12 @@ function handleToggleJoin() {
     }
 }
 window.handleToggleJoin = handleToggleJoin;
+
+// デバッグ用一括強制参加＆スキップ開始ハンドラ
+function handleForceJoinAndStart() {
+    socket.emit('debugForceJoinAndStartGame');
+}
+window.handleForceJoinAndStart = handleForceJoinAndStart;
 
 socket.on('init', (data) => {
     myId = data.id;
@@ -165,10 +178,36 @@ socket.on('cancelJoinSuccess', () => {
     updateLobbyUI();
 });
 
+// 本番ドラフトフェーズ開始イベント受信
+socket.on('startDraft', (data) => {
+    if (window.ResultModal) window.ResultModal.close();
+    document.getElementById('lobby-area').style.display = 'none';
+    document.getElementById('game-main').style.display = 'none';
+
+    if (window.DraftManager) {
+        window.DraftManager.render(data, myId);
+    }
+});
+
+// ドラフトバッティング競合イベント受信
+socket.on('draftConflict', (data) => {
+    if (window.DraftManager) {
+        window.DraftManager.handleConflict(data, myId);
+    }
+});
+
+// 他プレイヤーのドラフト選択状況更新
+socket.on('draftChoiceUpdated', (data) => {
+    if (window.DraftManager) {
+        window.DraftManager.updateChoices(data.choices, myId);
+    }
+});
+
 // 全10巡終了時のリザルト画面表示
 socket.on('gameOver', (data) => {
     window.closeDropActionModal();
     window.closeTimeBombModal();
+    if (window.DraftManager) window.DraftManager.close();
 
     setTimeout(() => {
         if (window.ResultModal && typeof window.ResultModal.show === 'function') {
@@ -183,6 +222,7 @@ socket.on('rematchSuccess', (data) => {
     myPlayerNumber = data.playerNumber;
 
     if (window.ResultModal) window.ResultModal.close();
+    if (window.DraftManager) window.DraftManager.close();
     document.getElementById('game-main').style.display = 'none';
     updateLobbyUI();
 });
@@ -193,6 +233,7 @@ socket.on('leaveToLobbySuccess', () => {
     myPlayerNumber = null;
 
     if (window.ResultModal) window.ResultModal.close();
+    if (window.DraftManager) window.DraftManager.close();
     document.getElementById('game-main').style.display = 'none';
     updateLobbyUI();
 });
@@ -456,21 +497,28 @@ socket.on('syncGameState', (data) => {
         }
     }
 
-    // ゲーム開始時はロビー画面を非表示に
     const lobbyArea = document.getElementById('lobby-area');
+    const draftArea = document.getElementById('draft-area');
+
     if (data.started) {
         if (lobbyArea) lobbyArea.style.display = 'none';
+        if (window.DraftManager) window.DraftManager.close();
         document.getElementById('status').innerText = '';
         document.getElementById('game-main').style.display = 'block';
+    } else if (data.draft && data.draft.phase === 'SELECTING') {
+        if (lobbyArea) lobbyArea.style.display = 'none';
+        document.getElementById('game-main').style.display = 'none';
+        if (window.DraftManager) {
+            window.DraftManager.render({
+                availableScores: data.draft.availableScores,
+                players: data.players,
+                choices: data.draft.choices
+            }, myId);
+        }
     } else {
         updateLobbyUI();
+        if (draftArea) draftArea.style.display = 'none';
         document.getElementById('game-main').style.display = 'none';
-    }
-
-    const draftArea = document.getElementById('draft-area');
-    if (draftArea) {
-        draftArea.style.display = 'none';
-        draftArea.innerHTML = '';
     }
 
     document.getElementById('round-info').innerText = `第 ${data.round} 巡目 / 全10巡`;

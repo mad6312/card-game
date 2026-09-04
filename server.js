@@ -21,10 +21,12 @@ app.use(express.static('public'));
 let cardSettings = createInitialCardSettings();
 let showOtherPlayersInfo = true;
 let skipBonusModal = true;
-let ignoreDrawRestrictions = true; // デバッグドロー時の制限無視トグル（デフォルト: ON）
+let ignoreDrawRestrictions = true;
 
 // 接続ソケットごとのプロファイル（未エントリー時も保持）
 const socketProfiles = {};
+// 接続順序を記録するソケットIDリスト
+let connectionOrder = [];
 
 function createInitialState() {
     return {
@@ -42,7 +44,7 @@ function createInitialState() {
             smoke_screen: 0
         },
         draft: {
-            phase: 'SELECTING',
+            phase: 'WAITING',
             choices: {},
             availableScores: [5000, 1000, -1000, -5000],
             timer: null
@@ -64,12 +66,96 @@ function getSyncPayload(customLog = '') {
         skipBonusModal: skipBonusModal,
         ignoreDrawRestrictions: ignoreDrawRestrictions,
         started: gameState.started,
+        draft: gameState.draft,
         log: customLog
     };
 }
 
 function broadcastGameState(customLog = '') {
     io.emit('syncGameState', getSyncPayload(customLog));
+}
+
+// 本番仕様：4人揃った際のドラフトフェーズ開始
+function startDraftPhase() {
+    gameState.draft = {
+        phase: 'SELECTING',
+        choices: {},
+        availableScores: [5000, 1000, -1000, -5000],
+        timer: null
+    };
+
+    Object.values(gameState.players).forEach(p => {
+        p.score = 25000;
+        p.prevScore = 25000;
+        p.scoreChange = 0;
+        p.draftResolved = false;
+    });
+
+    io.emit('startDraft', {
+        availableScores: gameState.draft.availableScores,
+        players: gameState.players
+    });
+
+    broadcastGameState('4人揃いました！初期得点ドラフトを開始します。');
+}
+
+// デバッグ仕様：一括強制参加＆ドラフトスキップ即時開始
+function forceJoinAndStartGame(triggerSocket) {
+    const activeSocketIds = connectionOrder.filter(id => io.sockets.sockets.has(id));
+
+    if (activeSocketIds.length < 4) {
+        if (triggerSocket) {
+            triggerSocket.emit('errorMessage', `接続人数が4名未満（現在 ${activeSocketIds.length} 名）です。4タブ開いた状態で押してください。`);
+        }
+        return;
+    }
+
+    gameState = createInitialState();
+
+    for (let i = 0; i < 4; i++) {
+        const sId = activeSocketIds[i];
+        const pNum = i + 1;
+        const profile = socketProfiles[sId] || { name: `P${pNum}`, avatar: DEFAULT_AVATAR_ID };
+        let finalName = profile.name;
+        if (!finalName || finalName === 'プレイヤー') finalName = `P${pNum}`;
+
+        gameState.players[sId] = {
+            id: sId,
+            number: pNum,
+            name: finalName,
+            avatar: profile.avatar || DEFAULT_AVATAR_ID,
+            score: 25000,
+            prevScore: 25000,
+            scoreChange: 0,
+            hand: [],
+            defenseCard: null,
+            draftResolved: true,
+            immunityCount: 0,
+            invincibleTurns: 0,
+            invincibleSource: null,
+            armorRevealed: false,
+            steroidTurns: 0,
+            steroidRevealed: false,
+            darknessTurns: 0,
+            timeBombTurns: 0,
+            bombTransferAttempted: false,
+            bombDrawnThisTurn: false,
+            playedHandCardThisTurn: false,
+            playedObanThisTurn: false,
+            playedDarkMatterThisTurn: false
+        };
+
+        const targetSock = io.sockets.sockets.get(sId);
+        if (targetSock) {
+            targetSock.emit('joinSuccess', {
+                playerNumber: pNum,
+                name: finalName,
+                avatar: profile.avatar || DEFAULT_AVATAR_ID
+            });
+        }
+    }
+
+    skipDraftAndStartGame();
 }
 
 function skipDraftAndStartGame() {
@@ -110,71 +196,113 @@ function skipDraftAndStartGame() {
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
-    broadcastGameState('4人揃いました！ゲームを開始します。');
+    broadcastGameState('ゲームを開始します。（ドラフトスキップ：全員25,000点）');
 }
 
+// ドラフト解決：ランダム勝敗抽選＆自動割り当て例外処理
 function resolveDraft() {
     const unresolvedIds = Object.keys(gameState.players).filter(id => !gameState.players[id].draftResolved);
     const chosenMap = {};
-    const conflicts = {};
 
     unresolvedIds.forEach(id => {
         const val = gameState.draft.choices[id];
-        if (!chosenMap[val]) chosenMap[val] = [];
-        chosenMap[val].push(id);
-    });
-
-    Object.keys(chosenMap).forEach(score => {
-        if (chosenMap[score].length > 1) {
-            conflicts[score] = chosenMap[score];
+        if (val !== undefined) {
+            if (!chosenMap[val]) chosenMap[val] = [];
+            chosenMap[val].push(id);
         }
     });
 
-    if (Object.keys(conflicts).length > 0) {
-        Object.keys(chosenMap).forEach(score => {
-            if (chosenMap[score].length === 1) {
-                const winnerId = chosenMap[score][0];
-                const p = gameState.players[winnerId];
-                p.score += Number(score);
-                p.prevScore = p.score;
-                p.draftResolved = true;
+    const logs = [];
 
-                const idx = gameState.draft.availableScores.indexOf(Number(score));
-                if (idx !== -1) gameState.draft.availableScores.splice(idx, 1);
-            }
-        });
+    // 得点グループごとに勝敗判定
+    Object.keys(chosenMap).forEach(scoreStr => {
+        const score = Number(scoreStr);
+        const playerIds = chosenMap[score];
 
-        const newUnresolved = Object.keys(gameState.players).filter(id => !gameState.players[id].draftResolved);
-        io.emit('draftConflict', {
-            unresolvedIds: newUnresolved,
-            availableScores: gameState.draft.availableScores,
-            players: gameState.players
-        });
-    } else {
-        unresolvedIds.forEach(id => {
-            const score = gameState.draft.choices[id];
-            const p = gameState.players[id];
-            p.score += Number(score);
+        if (playerIds.length === 1) {
+            // 単独選出：無条件で獲得確定
+            const winnerId = playerIds[0];
+            const p = gameState.players[winnerId];
+            p.score += score;
             p.prevScore = p.score;
             p.draftResolved = true;
-        });
 
+            const idx = gameState.draft.availableScores.indexOf(score);
+            if (idx !== -1) gameState.draft.availableScores.splice(idx, 1);
+
+            const signStr = score > 0 ? `+${score.toLocaleString()}` : (score < 0 ? `${score.toLocaleString()}` : '±0');
+            logs.push(`[ドラフト] ${p.name} が単独で【${signStr}点】を獲得しました。`);
+        } else if (playerIds.length > 1) {
+            // バッティング競合：ランダム抽選で1名の勝者を決定
+            const winnerIdx = Math.floor(Math.random() * playerIds.length);
+            const winnerId = playerIds[winnerIdx];
+            const winnerPlayer = gameState.players[winnerId];
+
+            winnerPlayer.score += score;
+            winnerPlayer.prevScore = winnerPlayer.score;
+            winnerPlayer.draftResolved = true;
+
+            const idx = gameState.draft.availableScores.indexOf(score);
+            if (idx !== -1) gameState.draft.availableScores.splice(idx, 1);
+
+            const loserIds = playerIds.filter(id => id !== winnerId);
+            const loserNames = loserIds.map(id => gameState.players[id].name).join(', ');
+
+            const signStr = score > 0 ? `+${score.toLocaleString()}` : (score < 0 ? `${score.toLocaleString()}` : '±0');
+            logs.push(`🎲 [ドラフト抽選] 【${signStr}点】は抽選の結果 ${winnerPlayer.name} が獲得しました！ 敗北した ${loserNames} は残りの得点から再選択してください。`);
+        }
+    });
+
+    // 選択状態をリセット
+    gameState.draft.choices = {};
+
+    // 残り未確定プレイヤーのチェック
+    let remainingUnresolved = Object.keys(gameState.players).filter(id => !gameState.players[id].draftResolved);
+
+    // 【自動割り当ての例外ルール】残り未確定者が1名、かつ残存得点が1つの場合
+    if (remainingUnresolved.length === 1 && gameState.draft.availableScores.length === 1) {
+        const lastPlayerId = remainingUnresolved[0];
+        const lastPlayer = gameState.players[lastPlayerId];
+        const lastScore = gameState.draft.availableScores[0];
+
+        lastPlayer.score += lastScore;
+        lastPlayer.prevScore = lastPlayer.score;
+        lastPlayer.draftResolved = true;
+        gameState.draft.availableScores = [];
+
+        const signStr = lastScore > 0 ? `+${lastScore.toLocaleString()}` : (lastScore < 0 ? `${lastScore.toLocaleString()}` : '±0');
+        logs.push(`[ドラフト自動確定] 残り1枠のため、${lastPlayer.name} に【${signStr}点】が自動割り当てられました。`);
+
+        remainingUnresolved = [];
+    }
+
+    if (remainingUnresolved.length === 0) {
+        // 全員確定！ゲーム開始
         gameState.started = true;
         gameState.draft.phase = 'FINISHED';
 
-        const playerIds = Object.keys(gameState.players);
-        for (let i = playerIds.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [playerIds[i], playerIds[j]] = [playerIds[j], playerIds[i]];
-        }
-
-        gameState.turnOrder = playerIds;
-        gameState.currentTurnPlayerId = playerIds[0];
-        gameState.actedPlayerIds = [];
         gameState.round = 1;
+        gameState.actedPlayerIds = [];
+        gameState.cardCooldowns = {
+            diamond_sword: 0,
+            earthquake: 0,
+            disaster: 0,
+            smoke_screen: 0
+        };
+        gameState.currentTurnPlayerId = getNextPlayerId();
         gameState.turnPhase = 'BONUS_CHOICE';
 
-        broadcastGameState('ドラフト完了！ゲームを開始します。');
+        const finalLog = logs.join('\n') + '\nドラフト完了！ゲームを開始します。';
+        broadcastGameState(finalLog);
+    } else {
+        // 競合発生：敗北者に残存選択肢を提示して再選択
+        io.emit('draftConflict', {
+            unresolvedIds: remainingUnresolved,
+            availableScores: gameState.draft.availableScores,
+            players: gameState.players
+        });
+
+        broadcastGameState(logs.join('\n'));
     }
 }
 
@@ -255,7 +383,6 @@ function proceedToNextTurn() {
         }
     });
 
-    // 使用後出現制限（12Tクールダウンタイマー）の減算処理
     if (gameState.cardCooldowns) {
         Object.keys(gameState.cardCooldowns).forEach(cardId => {
             if (gameState.cardCooldowns[cardId] > 0) {
@@ -328,7 +455,6 @@ function proceedToNextTurn() {
     });
 
     function finalizeNextTurn(alreadyLoggedExpire = false) {
-        // 全員行動完了時の巡目チェック（第10巡終了時の完全停止判定）
         if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
             if (gameState.round >= 10) {
                 gameState.started = false;
@@ -402,8 +528,8 @@ function proceedToNextTurn() {
 
 io.on('connection', (socket) => {
     console.log('接続:', socket.id);
+    connectionOrder.push(socket.id);
 
-    // 未エントリーソケット用の初期プロファイル
     socketProfiles[socket.id] = {
         name: `プレイヤー`,
         avatar: DEFAULT_AVATAR_ID
@@ -498,7 +624,7 @@ io.on('connection', (socket) => {
         io.emit('playerUpdate', { playerCount: newCount, started: false });
 
         if (newCount === 4) {
-            skipDraftAndStartGame();
+            startDraftPhase();
         }
     });
 
@@ -515,6 +641,29 @@ io.on('connection', (socket) => {
 
         const newCount = Object.keys(gameState.players).length;
         io.emit('playerUpdate', { playerCount: newCount, started: false });
+    });
+
+    // ドラフト得点選択
+    socket.on('selectDraftScore', (score) => {
+        if (gameState.started || gameState.draft.phase !== 'SELECTING') return;
+        const player = gameState.players[socket.id];
+        if (!player || player.draftResolved) return;
+
+        gameState.draft.choices[socket.id] = Number(score);
+
+        io.emit('draftChoiceUpdated', { choices: gameState.draft.choices });
+
+        const unresolvedIds = Object.keys(gameState.players).filter(id => !gameState.players[id].draftResolved);
+        const answeredCount = unresolvedIds.filter(id => gameState.draft.choices[id] !== undefined).length;
+
+        if (answeredCount >= unresolvedIds.length) {
+            resolveDraft();
+        }
+    });
+
+    // デバッグ機能：一括強制参加＆スキップ即時開始
+    socket.on('debugForceJoinAndStartGame', () => {
+        forceJoinAndStartGame(socket);
     });
 
     // リザルト画面：再戦エントリー要求
@@ -546,7 +695,6 @@ io.on('connection', (socket) => {
             gameState.players[socket.id] = player;
         }
 
-        // 初期ステータスへ完全リセット
         player.score = 25000;
         player.prevScore = 25000;
         player.scoreChange = 0;
@@ -576,13 +724,11 @@ io.on('connection', (socket) => {
         const newCount = Object.keys(gameState.players).length;
         io.emit('playerUpdate', { playerCount: newCount, started: false });
 
-        // 全員揃っていれば即時新ゲーム開始
         if (newCount === 4 && (!gameState.started || gameState.turnPhase === 'GAME_OVER')) {
-            skipDraftAndStartGame();
+            startDraftPhase();
         }
     });
 
-    // リザルト画面：退出してロビー待機へ戻る
     socket.on('leaveToLobby', () => {
         if (gameState.players[socket.id]) {
             delete gameState.players[socket.id];
@@ -706,21 +852,6 @@ io.on('connection', (socket) => {
         if (cardSettings.hasOwnProperty(cardId)) {
             cardSettings[cardId] = enabled;
             io.emit('updateCardSettings', cardSettings);
-        }
-    });
-
-    socket.on('selectDraftScore', (score) => {
-        if (gameState.started || gameState.draft.phase === 'FINISHED') return;
-        const player = gameState.players[socket.id];
-        if (!player || player.draftResolved) return;
-
-        gameState.draft.choices[socket.id] = Number(score);
-        const unresolvedIds = Object.keys(gameState.players).filter(id => !gameState.players[id].draftResolved);
-        const answeredCount = unresolvedIds.filter(id => gameState.draft.choices[id] !== undefined).length;
-
-        if (answeredCount >= unresolvedIds.length) {
-            if (gameState.draft.timer) clearTimeout(gameState.draft.timer);
-            resolveDraft();
         }
     });
 
@@ -1229,8 +1360,9 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('切断:', socket.id);
-        const wasJoined = !!gameState.players[socket.id];
+        connectionOrder = connectionOrder.filter(id => id !== socket.id);
 
+        const wasJoined = !!gameState.players[socket.id];
         if (!gameState.started && wasJoined) {
             delete gameState.players[socket.id];
             const newCount = Object.keys(gameState.players).length;
