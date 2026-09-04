@@ -1,13 +1,102 @@
 /**
  * スコアボードUI制御モジュール (scoreboard.js)
- * 3カラム・グリッド構造により、名前・持ち点・点差の縦列を美しく整列描画します。
+ * 4カラム・グリッド構造により、名前・状態バッジ・持ち点・点差の縦列を美しく整列描画します。
  */
 
 (function (window) {
     'use strict';
 
     /**
-     * スコアボードの描画・更新処理
+     * 各プレイヤーの現在の状態ステータスバッジ群のHTMLを生成
+     * @param {Object} p プレイヤーオブジェクト
+     * @param {boolean} isMe 自分自身かどうか
+     * @returns {string} バッジコンテナHTML
+     */
+    function renderScoreboardBadges(p, isMe) {
+        let badgesHtml = '';
+
+        // 1. 選択不可状態
+        if (p.immunityCount > 0) {
+            badgesHtml += `
+                <span class="scoreboard-badge-tag" title="選択不可">
+                    不可:${p.immunityCount}
+                </span>
+            `;
+        }
+
+        // 2. 無敵状態（ダークマター / 無敵アーマー）
+        if (p.invincibleTurns > 0) {
+            if (p.invincibleSource === 'DARK_MATTER') {
+                badgesHtml += `
+                    <div class="status-badge-wrapper scoreboard-badge-wrapper">
+                        <img src="/images/dark_matter.png" class="scoreboard-badge-img" alt="ダークマター">
+                        <div class="card-tooltip">
+                            <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">ダークマター</div>
+                            <div>無敵：あらゆる攻撃カードの効果を受けない。</div>
+                        </div>
+                    </div>
+                `;
+            } else if (isMe || p.armorRevealed) {
+                badgesHtml += `
+                    <div class="status-badge-wrapper scoreboard-badge-wrapper">
+                        <img src="/images/invincible_armor.png" class="scoreboard-badge-img" alt="無敵アーマー">
+                        <span class="status-badge-count scoreboard-badge-count">${p.invincibleTurns}</span>
+                        <div class="card-tooltip">
+                            <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">無敵アーマー</div>
+                            <div>無敵：あらゆる攻撃カードの効果を受けない。</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // 3. ステロイド状態（自分自身、または公開時のみ）
+        if (p.steroidTurns > 0 && (isMe || p.steroidRevealed)) {
+            badgesHtml += `
+                <div class="status-badge-wrapper scoreboard-badge-wrapper">
+                    <img src="/images/steroid.png" class="scoreboard-badge-img" alt="ステロイド">
+                    <span class="status-badge-count scoreboard-badge-count">${p.steroidTurns}</span>
+                    <div class="card-tooltip">
+                        <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">ステロイド</div>
+                        <div>ステロイド：一部を除く攻撃カードの効果を受けない。</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 4. 暗闇状態（煙幕）
+        if (p.darknessTurns > 0) {
+            badgesHtml += `
+                <div class="status-badge-wrapper scoreboard-badge-wrapper">
+                    <img src="/images/smoke_screen.png" class="scoreboard-badge-img" alt="煙幕">
+                    <span class="status-badge-count scoreboard-badge-count">${p.darknessTurns}</span>
+                    <div class="card-tooltip">
+                        <div style="font-weight: bold; color: #f1c40f; margin-bottom: 3px;">煙幕</div>
+                        <div>暗闇：攻撃カードの命中率が半減される。</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 5. 時限爆弾状態
+        if (p.timeBombTurns > 0) {
+            badgesHtml += `
+                <div class="status-badge-wrapper scoreboard-badge-wrapper">
+                    <img src="/images/time_bomb.png" class="scoreboard-badge-img" alt="時限爆弾">
+                    <span class="status-badge-count scoreboard-badge-count">${p.timeBombTurns}</span>
+                    <div class="card-tooltip">
+                        <div style="font-weight: bold; color: #e74c3c; margin-bottom: 3px;">時限爆弾</div>
+                        <div>時限爆弾：カウントが0になると爆発して-6,000点＆手札防御全破棄。±3,000点差の相手に50%で受け渡し可能。</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `<div class="scoreboard-col-badges">${badgesHtml}</div>`;
+    }
+
+    /**
+     * スコアボードの描画・更新処理（4カラム完全同期）
      * @param {Object} players プレイヤー一覧データ
      * @param {string} myId 自身のソケットID
      * @param {Array} presetAvatars プリセットアバター一覧
@@ -40,7 +129,7 @@
             rankMap[p.id] = higherCount + 1;
         });
 
-        // 3. 3カラムHTMLの構築
+        // 3. 4カラムHTMLの構築
         let rowsHtml = '';
 
         sorted.forEach((p) => {
@@ -54,7 +143,10 @@
                 if (matched) avatarSrc = matched.image;
             }
 
-            // 得点差テキスト＆スタイルの決定
+            // カラム2: 状態ステータスバッジ
+            const badgesColHtml = renderScoreboardBadges(p, isMe);
+
+            // カラム4: 得点差テキスト＆スタイルの決定
             let diffHtml = '';
             if (isMe) {
                 diffHtml = `<span class="score-diff-tag diff-me">(自分)</span>`;
@@ -71,17 +163,20 @@
 
             rowsHtml += `
                 <div class="scoreboard-row ${isMe ? 'row-me' : ''}">
-                    <!-- カラム1: プレイヤー情報（順位 + アバター + 名前最大10文字） -->
+                    <!-- カラム1: プレイヤー情報（順位 + アバター + 名前） -->
                     <div class="scoreboard-col-player">
                         <span class="scoreboard-rank">${rank}位</span>
                         <img src="${avatarSrc}" class="scoreboard-avatar" alt="${p.name}" onerror="this.src='/images/avatars/avatar_default.png'">
                         <span class="scoreboard-name" title="${p.name}">${p.name}</span>
                     </div>
 
-                    <!-- カラム2: 現在の得点（右揃えで縦列統一） -->
+                    <!-- カラム2: 状態ステータスバッジ（新設・左揃え） -->
+                    ${badgesColHtml}
+
+                    <!-- カラム3: 現在の得点（右揃えで縦列統一） -->
                     <div class="scoreboard-col-score">${p.score.toLocaleString()}点</div>
 
-                    <!-- カラム3: 自分との得点差（右揃えで縦列統一） -->
+                    <!-- カラム4: 自分との得点差（右揃えで縦列統一） -->
                     <div class="scoreboard-col-diff">${diffHtml}</div>
                 </div>
             `;

@@ -428,16 +428,16 @@ body {
 }
 
 /* ===================================================
-   スコアボードUIスタイル (3カラムGrid・可変幅fit-content・盤面接触防止)
+   スコアボードUIスタイル (4カラムGrid・可変幅fit-content・盤面接触防止)
    =================================================== */
 #global-scoreboard {
     position: fixed;
     bottom: 20px;
     left: 20px;
     width: fit-content;
-    min-width: 290px;
-    max-width: min(440px, calc(50vw - 460px));
-    /* 画面中央940pxの盤面に接触する直前で伸縮ストップ */
+    min-width: 330px;
+    max-width: min(480px, calc(50vw - 490px));
+    /* 画面中央940pxの盤面に接触する直前(50vw - 490px)で伸縮ストップ */
     background: rgba(15, 23, 42, 0.94);
     border: 1.5px solid #f1c40f;
     border-radius: 8px;
@@ -454,7 +454,7 @@ body {
 /* 画面幅が狭い場合のセーフティ配置 */
 @media (max-width: 1440px) {
     #global-scoreboard {
-        max-width: 340px;
+        max-width: min(380px, calc(50vw - 490px));
     }
 }
 
@@ -475,12 +475,12 @@ body {
     gap: 5px;
 }
 
-/* 3カラムグリッド構造（列の縦揃え） */
+/* 4カラムグリッド構造（列の縦揃え統一） */
 .scoreboard-row {
     display: grid;
-    grid-template-columns: minmax(auto, 1fr) auto auto;
+    grid-template-columns: minmax(auto, 1fr) auto auto auto;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     padding: 4px 6px;
     border-radius: 4px;
     background: rgba(30, 41, 59, 0.6);
@@ -528,7 +528,70 @@ body {
     line-height: 1.2;
 }
 
-/* カラム2: 持ち点（右揃え） */
+/* カラム2: 状態ステータスバッジ群（新設・左揃え） */
+.scoreboard-col-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-start;
+    min-width: 16px;
+}
+
+/* スコアボード用極小ミニバッジ */
+.scoreboard-badge-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.scoreboard-badge-img {
+    width: 16px;
+    height: 24px;
+    object-fit: contain;
+    border-radius: 2px;
+    border: 1px solid #f1c40f;
+    display: block;
+}
+
+.scoreboard-badge-count {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #e74c3c;
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: bold;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 2px;
+    box-sizing: border-box;
+    border-radius: 9999px;
+    border: 1px solid #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+    z-index: 20;
+    line-height: 1;
+}
+
+.scoreboard-badge-tag {
+    color: #e74c3c;
+    font-weight: bold;
+    font-size: 9.5px;
+    background: #1e293b;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid #e74c3c;
+    white-space: nowrap;
+    flex-shrink: 0;
+    line-height: 1.2;
+}
+
+/* カラム3: 持ち点（右揃え） */
 .scoreboard-col-score {
     font-weight: bold;
     color: #cbd5e1;
@@ -537,7 +600,7 @@ body {
     flex-shrink: 0;
 }
 
-/* カラム3: 得点差（右揃え） */
+/* カラム4: 得点差（右揃え） */
 .scoreboard-col-diff {
     text-align: right;
     white-space: nowrap;
