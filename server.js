@@ -23,6 +23,9 @@ let showOtherPlayersInfo = true;
 let skipBonusModal = true;
 let ignoreDrawRestrictions = true; // デバッグドロー時の制限無視トグル（デフォルト: ON）
 
+// 接続ソケットごとのプロファイル（未エントリー時も保持）
+const socketProfiles = {};
+
 function createInitialState() {
     return {
         started: false,
@@ -60,6 +63,7 @@ function getSyncPayload(customLog = '') {
         showOtherPlayersInfo: showOtherPlayersInfo,
         skipBonusModal: skipBonusModal,
         ignoreDrawRestrictions: ignoreDrawRestrictions,
+        started: gameState.started,
         log: customLog
     };
 }
@@ -85,7 +89,7 @@ function skipDraftAndStartGame() {
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
-    broadcastGameState('ゲームを開始します。');
+    broadcastGameState('4人揃いました！ゲームを開始します。');
 }
 
 function resolveDraft() {
@@ -364,16 +368,72 @@ function proceedToNextTurn() {
 
 io.on('connection', (socket) => {
     console.log('接続:', socket.id);
-    const playerKeys = Object.keys(gameState.players);
 
-    if (playerKeys.length < 4 && !gameState.started) {
-        const pNum = playerKeys.length + 1;
+    // 未エントリーソケット用の初期プロファイル
+    socketProfiles[socket.id] = {
+        name: `プレイヤー`,
+        avatar: DEFAULT_AVATAR_ID
+    };
+
+    const isJoined = !!gameState.players[socket.id];
+    const joinedCount = Object.keys(gameState.players).length;
+
+    socket.emit('init', {
+        id: socket.id,
+        name: isJoined ? gameState.players[socket.id].name : socketProfiles[socket.id].name,
+        avatar: isJoined ? gameState.players[socket.id].avatar : socketProfiles[socket.id].avatar,
+        presetAvatars: PRESET_AVATARS,
+        isJoined: isJoined,
+        started: gameState.started,
+        playerCount: joinedCount
+    });
+
+    socket.emit('updateCardSettings', cardSettings);
+    socket.emit('updatePublicInfoSetting', showOtherPlayersInfo);
+    socket.emit('updateBonusSkipSetting', skipBonusModal);
+    socket.emit('updateDrawRestrictionsSetting', ignoreDrawRestrictions);
+
+    if (gameState.started) {
+        socket.emit('syncGameState', getSyncPayload(''));
+    } else {
+        socket.emit('playerUpdate', { playerCount: joinedCount, started: false });
+    }
+
+    // 参加する（エントリー）
+    socket.on('joinGame', () => {
+        if (gameState.started) {
+            socket.emit('errorMessage', 'ゲームはすでに開始されています。');
+            return;
+        }
+        if (gameState.players[socket.id]) return; // 既に参加中
+
+        const currentPlayers = Object.values(gameState.players);
+        if (currentPlayers.length >= 4) {
+            socket.emit('errorMessage', '定員（4名）に達しているため参加できません。');
+            return;
+        }
+
+        // 1〜4の中で空いている最小の番号を算出
+        const usedNumbers = currentPlayers.map(p => p.number);
+        let pNum = 1;
+        for (let i = 1; i <= 4; i++) {
+            if (!usedNumbers.includes(i)) {
+                pNum = i;
+                break;
+            }
+        }
+
+        const profile = socketProfiles[socket.id] || { name: `P${pNum}`, avatar: DEFAULT_AVATAR_ID };
+        let finalName = profile.name;
+        if (!finalName || finalName === 'プレイヤー') {
+            finalName = `P${pNum}`;
+        }
 
         gameState.players[socket.id] = {
             id: socket.id,
             number: pNum,
-            name: `P${pNum}`,
-            avatar: DEFAULT_AVATAR_ID,
+            name: finalName,
+            avatar: profile.avatar || DEFAULT_AVATAR_ID,
             score: 25000,
             prevScore: 25000,
             scoreChange: 0,
@@ -395,45 +455,58 @@ io.on('connection', (socket) => {
             playedDarkMatterThisTurn: false
         };
 
-        socket.emit('init', {
+        socket.emit('joinSuccess', {
             playerNumber: pNum,
-            id: socket.id,
-            name: `P${pNum}`,
-            avatar: DEFAULT_AVATAR_ID,
-            presetAvatars: PRESET_AVATARS
+            name: finalName,
+            avatar: profile.avatar || DEFAULT_AVATAR_ID
         });
-        io.emit('playerUpdate', { playerCount: Object.keys(gameState.players).length });
-        socket.emit('updateCardSettings', cardSettings);
-        socket.emit('updatePublicInfoSetting', showOtherPlayersInfo);
-        socket.emit('updateBonusSkipSetting', skipBonusModal);
-        socket.emit('updateDrawRestrictionsSetting', ignoreDrawRestrictions);
 
-        if (Object.keys(gameState.players).length === 4) {
+        const newCount = Object.keys(gameState.players).length;
+        io.emit('playerUpdate', { playerCount: newCount, started: false });
+
+        if (newCount === 4) {
             skipDraftAndStartGame();
         }
-    } else {
-        socket.emit('full');
-    }
+    });
+
+    // 参加キャンセル（エントリー解除）
+    socket.on('cancelJoin', () => {
+        if (gameState.started) {
+            socket.emit('errorMessage', 'ゲーム開始後はキャンセルできません。');
+            return;
+        }
+        if (!gameState.players[socket.id]) return;
+
+        delete gameState.players[socket.id];
+        socket.emit('cancelJoinSuccess');
+
+        const newCount = Object.keys(gameState.players).length;
+        io.emit('playerUpdate', { playerCount: newCount, started: false });
+    });
 
     socket.on('changePlayerName', ({ newName }) => {
-        const player = gameState.players[socket.id];
-        if (!player) return;
-
         const trimmed = (newName || '').trim();
         if (!trimmed) {
             socket.emit('errorMessage', 'プレイヤー名を入力してください。');
             return;
         }
 
-        const oldName = player.name;
-        player.name = trimmed.slice(0, 10);
-        broadcastGameState(`[設定] 「${oldName}」がプレイヤー名を「${player.name}」に変更しました。`);
+        const cleanName = trimmed.slice(0, 10);
+        if (socketProfiles[socket.id]) {
+            socketProfiles[socket.id].name = cleanName;
+        }
+
+        const player = gameState.players[socket.id];
+        if (player) {
+            const oldName = player.name;
+            player.name = cleanName;
+            broadcastGameState(`[設定] 「${oldName}」がプレイヤー名を「${player.name}」に変更しました。`);
+        } else {
+            socket.emit('profileUpdated', { name: cleanName });
+        }
     });
 
     socket.on('changePlayerAvatar', ({ avatarId }) => {
-        const player = gameState.players[socket.id];
-        if (!player) return;
-
         if (avatarId === DEFAULT_AVATAR_ID) {
             socket.emit('errorMessage', 'デフォルトアバターに戻すことはできません。');
             return;
@@ -445,8 +518,17 @@ io.on('connection', (socket) => {
             return;
         }
 
-        player.avatar = avatarId;
-        broadcastGameState(`[設定] ${player.name} がアバターを変更しました。`);
+        if (socketProfiles[socket.id]) {
+            socketProfiles[socket.id].avatar = avatarId;
+        }
+
+        const player = gameState.players[socket.id];
+        if (player) {
+            player.avatar = avatarId;
+            broadcastGameState(`[設定] ${player.name} がアバターを変更しました。`);
+        } else {
+            socket.emit('profileUpdated', { avatar: avatarId });
+        }
     });
 
     socket.on('togglePublicInfoSetting', (enabled) => {
@@ -491,7 +573,6 @@ io.on('connection', (socket) => {
         if (!target) return;
 
         battle.resetScoreChanges(gameState);
-        // デバッグドロー時はトグルスイッチの状態（ignoreDrawRestrictions）に応じて選出
         const randomCard = getRandomAvailableCard(target, cardSettings, gameState, ignoreDrawRestrictions);
 
         if (randomCard.id === 'time_bomb') {
@@ -547,7 +628,6 @@ io.on('connection', (socket) => {
             battle.applyScoreChange(player, scoreAmount);
         }
 
-        // 本番ドローは常に全制限ルールを厳格に適用（ignoreRestrictions = false）
         const randomCard = getRandomAvailableCard(player, cardSettings, gameState, false);
         gameState.turnPhase = 'MAIN';
 
@@ -689,15 +769,15 @@ io.on('connection', (socket) => {
             broadcastGameState(msg);
         } else if (card.id === 'disaster') {
             player.hand.splice(cardIndex, 1);
-            gameState.cardCooldowns.disaster = 12; // 使用後出現制限(12T)
+            gameState.cardCooldowns.disaster = 12;
             battle.executeDisasterAttack(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'diamond_sword') {
             player.hand.splice(cardIndex, 1);
-            gameState.cardCooldowns.diamond_sword = 12; // 使用後出現制限(12T)
+            gameState.cardCooldowns.diamond_sword = 12;
             battle.executeDiamondSword(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'earthquake') {
             player.hand.splice(cardIndex, 1);
-            gameState.cardCooldowns.earthquake = 12; // 使用後出現制限(12T)
+            gameState.cardCooldowns.earthquake = 12;
             battle.executeEarthquake(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (card.id === 'invincible_armor') {
             player.invincibleTurns = 4;
@@ -720,7 +800,7 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('syncGameState', getSyncPayload(''));
         } else if (card.id === 'smoke_screen') {
             player.hand.splice(cardIndex, 1);
-            gameState.cardCooldowns.smoke_screen = 12; // 使用後出現制限(12T)
+            gameState.cardCooldowns.smoke_screen = 12;
             battle.executeSmokeScreen(gameState, socket.id, io, broadcastGameState, isImmuneToRound1CardEffect);
         } else if (actionTarget === 'ATTACK') {
             if (!targetPlayerId) {
@@ -1039,13 +1119,21 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        delete gameState.players[socket.id];
-        if (Object.keys(gameState.players).length === 0) {
+        console.log('切断:', socket.id);
+        const wasJoined = !!gameState.players[socket.id];
+
+        if (!gameState.started && wasJoined) {
+            delete gameState.players[socket.id];
+            const newCount = Object.keys(gameState.players).length;
+            io.emit('playerUpdate', { playerCount: newCount, started: false });
+        }
+
+        delete socketProfiles[socket.id];
+
+        if (Object.keys(gameState.players).length === 0 && gameState.started) {
             if (gameState.draft.timer) clearTimeout(gameState.draft.timer);
             gameState = createInitialState();
             console.log('全員切断のためリセット');
-        } else {
-            io.emit('playerUpdate', { playerCount: Object.keys(gameState.players).length });
         }
     });
 });

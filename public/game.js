@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定
+ * 通信、ロビー待機エントリー、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定
  */
 
 const socket = io();
@@ -8,6 +8,7 @@ window.socket = socket;
 
 let myId = null;
 let myPlayerNumber = null;
+let isJoinedGame = false; // ロビー参加エントリー状態
 let latestGameState = null;
 let currentCardSettings = {};
 
@@ -93,22 +94,92 @@ socket.on('connect', () => {
     window.myId = myId;
 });
 
+// ロビーUI表示・トグル更新処理
+function updateLobbyUI() {
+    const btn = document.getElementById('btn-join-lobby');
+    const statusText = document.getElementById('status');
+    const lobbyArea = document.getElementById('lobby-area');
+
+    if (!btn || !lobbyArea) return;
+
+    if (latestGameState && latestGameState.started) {
+        lobbyArea.style.display = 'none';
+        if (statusText) statusText.innerText = '';
+        return;
+    }
+
+    lobbyArea.style.display = 'block';
+
+    if (isJoinedGame) {
+        btn.innerText = '✖ 参加キャンセル';
+        btn.style.background = '#e74c3c';
+        if (statusText) statusText.innerText = `参加中（P${myPlayerNumber || ''}）... 他のプレイヤーを待っています`;
+    } else {
+        btn.innerText = '🎮 参加する';
+        btn.style.background = '#27ae60';
+        if (statusText) statusText.innerText = '「参加する」ボタンを押してエントリーしてください。';
+    }
+}
+
+// 参加する / 参加キャンセルのトグルクリックハンドラ
+function handleToggleJoin() {
+    if (isJoinedGame) {
+        socket.emit('cancelJoin');
+    } else {
+        socket.emit('joinGame');
+    }
+}
+window.handleToggleJoin = handleToggleJoin;
+
 socket.on('init', (data) => {
-    myPlayerNumber = data.playerNumber;
     myId = data.id;
     window.myId = myId;
-    document.getElementById('status').innerText = `あなたは P${myPlayerNumber} です。他のプレイヤーを待っています...`;
+    isJoinedGame = data.isJoined || false;
+
     const nameInput = document.getElementById('user-name-input');
-    if (nameInput) nameInput.value = data.name || `P${myPlayerNumber}`;
+    if (nameInput) nameInput.value = data.name || 'プレイヤー';
     if (data.presetAvatars && data.presetAvatars.length > 0) {
         availablePresetAvatars = data.presetAvatars;
+    }
+    renderAvatarPicker();
+
+    const countText = document.getElementById('lobby-count-text');
+    if (countText) {
+        countText.innerText = `現在の参加人数: ${data.playerCount || 0} / 4 人`;
+    }
+
+    updateLobbyUI();
+});
+
+socket.on('joinSuccess', (data) => {
+    isJoinedGame = true;
+    myPlayerNumber = data.playerNumber;
+    const nameInput = document.getElementById('user-name-input');
+    if (nameInput) nameInput.value = data.name;
+    updateLobbyUI();
+});
+
+socket.on('cancelJoinSuccess', () => {
+    isJoinedGame = false;
+    myPlayerNumber = null;
+    updateLobbyUI();
+});
+
+socket.on('profileUpdated', (data) => {
+    if (data.name) {
+        const nameInput = document.getElementById('user-name-input');
+        if (nameInput) nameInput.value = data.name;
     }
     renderAvatarPicker();
 });
 
 socket.on('playerUpdate', (data) => {
+    const countText = document.getElementById('lobby-count-text');
+    if (countText) {
+        countText.innerText = `現在の参加人数: ${data.playerCount || 0} / 4 人`;
+    }
     if (!latestGameState || !latestGameState.started) {
-        document.getElementById('status').innerText = `現在の参加人数: ${data.playerCount} / 4 人`;
+        updateLobbyUI();
     }
 });
 
@@ -353,7 +424,16 @@ socket.on('syncGameState', (data) => {
         }
     }
 
-    document.getElementById('status').innerText = '';
+    // ゲーム開始時はロビー画面を非表示に
+    const lobbyArea = document.getElementById('lobby-area');
+    if (data.started) {
+        if (lobbyArea) lobbyArea.style.display = 'none';
+        document.getElementById('status').innerText = '';
+        document.getElementById('game-main').style.display = 'block';
+    } else {
+        updateLobbyUI();
+        document.getElementById('game-main').style.display = 'none';
+    }
 
     const draftArea = document.getElementById('draft-area');
     if (draftArea) {
@@ -361,7 +441,6 @@ socket.on('syncGameState', (data) => {
         draftArea.innerHTML = '';
     }
 
-    document.getElementById('game-main').style.display = 'block';
     document.getElementById('round-info').innerText = `第 ${data.round} 巡目 / 全10巡`;
 
     const logBox = document.getElementById('log-box');

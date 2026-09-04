@@ -68,6 +68,26 @@
         <h2>対戦カードゲーム</h2>
         <div id="status">接続待機中...</div>
 
+        <!-- ロビー待機・エントリーエリア（新規追加） -->
+        <div id="lobby-area" class="card"
+            style="text-align: center; max-width: 500px; margin: 25px auto; padding: 25px; border: 1.5px solid #475569;">
+            <h3 style="margin-top: 0; color: #f1c40f; border-bottom: 1px solid #334155; padding-bottom: 8px;">🎮 対戦待機ロビー
+            </h3>
+            <div id="lobby-count-text" style="font-size: 1.15em; font-weight: bold; margin: 18px 0; color: #cbd5e1;">
+                現在の参加人数: 0 / 4 人
+            </div>
+            <div id="lobby-action-container" style="margin-top: 15px;">
+                <button id="btn-join-lobby" class="btn"
+                    style="background: #27ae60; font-size: 1.15em; padding: 12px 35px; font-weight: bold; margin: 0;"
+                    onclick="handleToggleJoin()">
+                    参加する
+                </button>
+            </div>
+            <div style="font-size: 0.82em; color: #94a3b8; margin-top: 15px; line-height: 1.4;">
+                ※右上の「⚙ 設定」ボタンから、参加前でもプレイヤー名やアバターを事前に変更できます。
+            </div>
+        </div>
+
         <div id="draft-area" class="card" style="display: none;"></div>
 
         <div id="game-main" style="display: none;">
