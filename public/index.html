@@ -18,13 +18,13 @@
     <!-- 常時表示スコアボードUI（画面左下固定・モーダル最前面） -->
     <div id="global-scoreboard"></div>
 
-    <!-- デバッグパネル -->
-    <details class="debug-score-panel" open>
+    <!-- デバッグパネル（本番環境時は自動非表示化） -->
+    <details class="debug-score-panel" id="debug-panel-root" open>
         <summary>🛠 デバッグパネル</summary>
         <div
             style="margin-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #334155; display: flex; flex-direction: column; gap: 6px;">
 
-            <!-- デバッグ用一括強制参加＆スキップ開始ボタン（新規追加） -->
+            <!-- デバッグ用一括強制参加＆スキップ開始ボタン -->
             <div style="margin-bottom: 4px;">
                 <button class="btn"
                     style="background: #f39c12; color: #000; width: 100%; font-weight: 900; padding: 7px 10px; font-size: 11.5px; margin: 0; box-shadow: 0 2px 6px rgba(243, 156, 18, 0.4);"
@@ -276,7 +276,7 @@
     <script src="/attackAnimation.js"></script>
     <!-- リザルト画面制御モジュール -->
     <script src="/result.js"></script>
-    <!-- ドラフトフェーズ制御モジュール（新規追加） -->
+    <!-- ドラフトフェーズ制御モジュール -->
     <script src="/draft.js"></script>
     <!-- モーダル・アクション制御モジュール -->
     <script src="/game_modal.js"></script>

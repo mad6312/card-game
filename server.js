@@ -18,10 +18,19 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
+// ===================================================
+// 【本番 / 開発環境切り替えフラグ】
+// 本番公開時は環境変数 NODE_ENV=production で起動するか、
+// 下記を直接 false に設定することで全デバッグ機能が完全に封印されます。
+// ===================================================
+const IS_DEBUG = process.env.NODE_ENV !== 'production';
+
 let cardSettings = createInitialCardSettings();
-let showOtherPlayersInfo = true;
-let skipBonusModal = true;
-let ignoreDrawRestrictions = true;
+
+// 本番時(IS_DEBUG: false)は厳格な本番ルール、開発時(IS_DEBUG: true)は効率化初期値
+let showOtherPlayersInfo = IS_DEBUG ? true : false;
+let skipBonusModal = IS_DEBUG ? true : false;
+let ignoreDrawRestrictions = IS_DEBUG ? true : false;
 
 // 接続ソケットごとのプロファイル（未エントリー時も保持）
 const socketProfiles = {};
@@ -65,6 +74,7 @@ function getSyncPayload(customLog = '') {
         showOtherPlayersInfo: showOtherPlayersInfo,
         skipBonusModal: skipBonusModal,
         ignoreDrawRestrictions: ignoreDrawRestrictions,
+        isDebugMode: IS_DEBUG,
         started: gameState.started,
         draft: gameState.draft,
         log: customLog
@@ -101,6 +111,8 @@ function startDraftPhase() {
 
 // デバッグ仕様：一括強制参加＆ドラフトスキップ即時開始
 function forceJoinAndStartGame(triggerSocket) {
+    if (!IS_DEBUG) return; // 本番環境では完全無効化
+
     const activeSocketIds = connectionOrder.filter(id => io.sockets.sockets.has(id));
 
     if (activeSocketIds.length < 4) {
@@ -316,7 +328,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b.number);
             return sortedByNumber[0].id;
         }
     }
@@ -545,6 +557,7 @@ io.on('connection', (socket) => {
         presetAvatars: PRESET_AVATARS,
         isJoined: isJoined,
         started: gameState.started,
+        isDebugMode: IS_DEBUG,
         playerCount: joinedCount
     });
 
@@ -661,8 +674,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    // デバッグ機能：一括強制参加＆スキップ即時開始
+    // デバッグ機能：一括強制参加＆スキップ即時開始（サーバー側ガード）
     socket.on('debugForceJoinAndStartGame', () => {
+        if (!IS_DEBUG) return;
         forceJoinAndStartGame(socket);
     });
 
@@ -786,25 +800,30 @@ io.on('connection', (socket) => {
         }
     });
 
+    // デバッグ用Socketイベントのサーバー側完全ガード
     socket.on('togglePublicInfoSetting', (enabled) => {
+        if (!IS_DEBUG) return;
         showOtherPlayersInfo = enabled;
         io.emit('updatePublicInfoSetting', showOtherPlayersInfo);
         broadcastGameState(`[デバッグ] 他プレイヤー情報（手札・防御）を「${enabled ? '公開' : '非公開'}」に設定しました。`);
     });
 
     socket.on('toggleBonusSkipSetting', (enabled) => {
+        if (!IS_DEBUG) return;
         skipBonusModal = enabled;
         io.emit('updateBonusSkipSetting', skipBonusModal);
         broadcastGameState(`[デバッグ] ボーナススキップを「${enabled ? 'ON' : 'OFF'}」に設定しました。`);
     });
 
     socket.on('toggleDrawRestrictionsSetting', (enabled) => {
+        if (!IS_DEBUG) return;
         ignoreDrawRestrictions = enabled;
         io.emit('updateDrawRestrictionsSetting', ignoreDrawRestrictions);
         broadcastGameState(`[デバッグ] デバッグドロー制限無視を「${enabled ? 'ON' : 'OFF'}」に設定しました。`);
     });
 
     socket.on('debugUpdateScore', ({ targetPlayerId, amount, setDirect }) => {
+        if (!IS_DEBUG) return;
         const target = gameState.players[targetPlayerId];
         if (!target) return;
 
@@ -824,6 +843,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('debugDrawCard', ({ targetPlayerId }) => {
+        if (!IS_DEBUG) return;
         const target = gameState.players[targetPlayerId];
         if (!target) return;
 
@@ -849,6 +869,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('toggleCardSetting', ({ cardId, enabled }) => {
+        if (!IS_DEBUG) return;
         if (cardSettings.hasOwnProperty(cardId)) {
             cardSettings[cardId] = enabled;
             io.emit('updateCardSettings', cardSettings);
@@ -1380,5 +1401,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(3000, () => {
-    console.log('サーバーがポート 3000 で起動しました');
+    console.log(`サーバーがポート 3000 で起動しました [モード: ${IS_DEBUG ? '開発(デバッグON)' : '本番(デバッグ封印)'}]`);
 });

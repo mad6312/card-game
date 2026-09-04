@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定、リザルト連携
+ * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定、リザルト連携、本番デバッグ切り替え
  */
 
 const socket = io();
@@ -148,6 +148,12 @@ socket.on('init', (data) => {
     myId = data.id;
     window.myId = myId;
     isJoinedGame = data.isJoined || false;
+
+    // デバッグパネルの表示/非表示（本番環境ガード）
+    const debugPanel = document.getElementById('debug-panel-root');
+    if (debugPanel) {
+        debugPanel.style.display = (data.isDebugMode === false) ? 'none' : 'block';
+    }
 
     const nameInput = document.getElementById('user-name-input');
     if (nameInput) nameInput.value = data.name || 'プレイヤー';
@@ -472,6 +478,12 @@ socket.on('errorMessage', (msg) => { alert(msg); });
 socket.on('syncGameState', (data) => {
     latestGameState = data;
     window.latestGameState = latestGameState;
+
+    // デバッグパネルの表示/非表示（本番環境ガード）
+    const debugPanel = document.getElementById('debug-panel-root');
+    if (debugPanel && typeof data.isDebugMode !== 'undefined') {
+        debugPanel.style.display = data.isDebugMode ? 'block' : 'none';
+    }
 
     if (typeof data.showOtherPlayersInfo !== 'undefined') {
         showOtherPlayersInfo = data.showOtherPlayersInfo;
