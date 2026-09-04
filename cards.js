@@ -173,8 +173,10 @@ function createInitialCardSettings() {
     };
 }
 
+const { calculatePlayerRank, selectCardByRankTable } = require('./draw_table');
+
 /**
- * カードのランダム選定ロジック（制限ルール・デバッグバイパス完全対応）
+ * カードのランダム選定ロジック（順位別確率テーブル・制限ルール・デバッグバイパス完全対応）
  * @param {Object} player ドローを行うプレイヤーオブジェクト
  * @param {Object} cardSettings カード排出ON/OFF設定
  * @param {Object|null} gameState ゲーム全体状態（巡目、全プレイヤー、クールダウン情報）
@@ -285,17 +287,27 @@ function getRandomAvailableCard(player, cardSettings, gameState = null, ignoreRe
     }
 
     // 3. 安全フォールバック（制限により候補が0件になった場合のクラッシュ防止）
-    let pool = availableCards;
-    if (pool.length === 0) {
-        // 制限のない基本カードを優先フォールバック
+    if (availableCards.length === 0) {
         const fallbackPool = CARD_DECK.filter(c => ['wood_shield', 'wood_sword', 'shotgun', 'omamori_koban'].includes(c.id) && cardSettings[c.id] !== false);
-        pool = fallbackPool.length > 0 ? fallbackPool : CARD_DECK;
+        availableCards = fallbackPool.length > 0 ? fallbackPool : CARD_DECK;
     }
 
-    // 4. ランダム選出とインスタンス生成
-    const template = pool[Math.floor(Math.random() * pool.length)];
+    // 4. 順位別カード排出確率テーブルに基づく抽選実行
+    let selectedTemplate = null;
+
+    if (ignoreRestrictions || !gameState || !player) {
+        // デバッグ制限無視時またはゲーム未開始時は均等ランダム選出
+        selectedTemplate = availableCards[Math.floor(Math.random() * availableCards.length)];
+    } else {
+        // 本番ドロー時：プレイヤーの現在順位（1位〜4位）に応じた重み付け再正規化抽選
+        const allPlayers = Object.values(gameState.players || {});
+        const rank = calculatePlayerRank(player, allPlayers);
+        selectedTemplate = selectCardByRankTable(availableCards, rank);
+    }
+
+    // 5. インスタンス生成と耐久回数設定
     const instance = {
-        ...template,
+        ...(selectedTemplate || availableCards[0]),
         instanceId: 'card_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
     };
 

@@ -467,12 +467,12 @@
             }
         }
 
-        // 5. 木の剣 / ショットガン
+        // 5. 木の剣 / ショットガン（単体: 50% / 下位全員: 各対象への実質命中率算出）
         if (cardId === 'wood_sword' || cardId === 'shotgun') {
             if (selectEl.value === 'ALL_LOWER' && myPlayer) {
                 const lowerCandidates = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !window.isLaterPlayerInRound1(window.myId, p.id));
                 if (lowerCandidates.length > 0) {
-                    const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
+                    const hitRates = calculateLowerTargetsHitRates(lowerCandidates, isDarkness, 0.5);
                     const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
                     displayEl.innerHTML = `🎯 命中率: <span style="color:#f1c40f; font-weight:bold;">${rateDetailStr}${isDarkness ? ' (暗闇半減)' : ''}</span>`;
                 } else {
@@ -613,7 +613,6 @@
                     const prevMyScore = myPlayer.score;
                     const newMyScore = prevMyScore + 5000;
 
-                    // 無敵・ステロイド状態のプレイヤーも除外せずペナルティ対象リストに含める
                     const penaltyTargets = allPlayers.filter(p => {
                         if (p.id === window.myId || window.isLaterPlayerInRound1(window.myId, p.id) || (p.immunityCount && p.immunityCount > 0)) return false;
                         return (p.score === prevMyScore) || (p.score > prevMyScore && newMyScore >= p.score);
@@ -764,7 +763,7 @@
                         const hitRates = calculateLowerTargetsHitRates(lowerCandidates, myPlayer.darknessTurns > 0, 0.8);
                         targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerCandidates.map(p => p.name).join(',')})</option>`;
                     }
-                } else if (card.id === 'wood_sword' || card.id === 'wood_sword_set' || card.id === 'shotgun') {
+                } else if (card.id === 'wood_sword_set') {
                     const allPlayers = Object.values(window.latestGameState.players);
                     const myScore = myPlayer.score;
 
@@ -783,13 +782,31 @@
                     if (lowerPlayers.length > 0) {
                         hasValidTarget = true;
                         const isDarkness = myPlayer.darknessTurns > 0;
-                        if (card.id === 'wood_sword_set') {
-                            const { rateDetailStr, groupStr } = calculateWoodSwordSetGroupHitRates(lowerPlayers, myScore, 1, isDarkness);
-                            targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
-                        } else {
-                            const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
-                            targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerPlayers.map(p => p.name).join(',')})</option>`;
+                        const { rateDetailStr, groupStr } = calculateWoodSwordSetGroupHitRates(lowerPlayers, myScore, 1, isDarkness);
+                        targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
+                    }
+                } else if (card.id === 'wood_sword' || card.id === 'shotgun') {
+                    const allPlayers = Object.values(window.latestGameState.players);
+                    const myScore = myPlayer.score;
+
+                    allPlayers.forEach((p) => {
+                        if (p.id !== window.myId) {
+                            const scoreDiff = p.score - myScore;
+                            const isImmune = p.immunityCount && p.immunityCount > 0;
+                            if (!window.isLaterPlayerInRound1(window.myId, p.id) && scoreDiff >= 0 && scoreDiff <= 5000 && !isImmune) {
+                                hasValidTarget = true;
+                                targetOptionsHtml += `<option value="${p.id}" data-hitrate="50%">${p.name}</option>`;
+                            }
                         }
+                    });
+
+                    let lowerPlayers = allPlayers.filter(p => p.score < myScore && (!p.immunityCount || p.immunityCount <= 0) && !window.isLaterPlayerInRound1(window.myId, p.id));
+                    if (lowerPlayers.length > 0) {
+                        hasValidTarget = true;
+                        const isDarkness = myPlayer.darknessTurns > 0;
+                        const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
+                        const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                        targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${lowerPlayers.map(p => p.name).join(',')})</option>`;
                     }
                 }
 
@@ -923,7 +940,8 @@
                         targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${groupStr})</option>`;
                     } else {
                         const hitRates = calculateLowerTargetsHitRates(lowerPlayers, isDarkness, 0.5);
-                        targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ')}">下位全員 (${lowerPlayers.map(p => p.name).join(',')})</option>`;
+                        const rateDetailStr = hitRates.map(item => `${item.player.name}: ${item.hitRate}%`).join(', ');
+                        targetOptionsHtml += `<option value="ALL_LOWER" data-hitrate="${rateDetailStr}">下位全員 (${lowerPlayers.map(p => p.name).join(',')})</option>`;
                     }
                 }
             }
