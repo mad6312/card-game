@@ -74,6 +74,10 @@ body {
     z-index: 1100;
 }
 
+#result-modal {
+    z-index: 2500;
+}
+
 .modal[style*="display: block"] {
     display: flex !important;
 }
@@ -437,21 +441,18 @@ body {
     width: fit-content;
     min-width: 330px;
     max-width: min(480px, calc(50vw - 490px));
-    /* 画面中央940pxの盤面に接触する直前(50vw - 490px)で伸縮ストップ */
     background: rgba(15, 23, 42, 0.94);
     border: 1.5px solid #f1c40f;
     border-radius: 8px;
     padding: 8px 12px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.65);
     z-index: 1500;
-    /* モーダル(1000〜1100)より前面 */
     pointer-events: auto;
     box-sizing: border-box;
     display: none;
     font-size: 11px;
 }
 
-/* 画面幅が狭い場合のセーフティ配置 */
 @media (max-width: 1440px) {
     #global-scoreboard {
         max-width: min(380px, calc(50vw - 490px));
@@ -475,7 +476,6 @@ body {
     gap: 5px;
 }
 
-/* 4カラムグリッド構造（列の縦揃え統一） */
 .scoreboard-row {
     display: grid;
     grid-template-columns: minmax(auto, 1fr) auto auto auto;
@@ -492,7 +492,6 @@ body {
     border: 1px solid rgba(56, 189, 248, 0.5);
 }
 
-/* カラム1: プレイヤー情報 */
 .scoreboard-col-player {
     display: flex;
     align-items: center;
@@ -528,7 +527,6 @@ body {
     line-height: 1.2;
 }
 
-/* カラム2: 状態ステータスバッジ群（新設・左揃え） */
 .scoreboard-col-badges {
     display: flex;
     align-items: center;
@@ -537,7 +535,6 @@ body {
     min-width: 16px;
 }
 
-/* スコアボード用極小ミニバッジ */
 .scoreboard-badge-wrapper {
     position: relative;
     display: inline-flex;
@@ -591,7 +588,6 @@ body {
     line-height: 1.2;
 }
 
-/* カラム3: 持ち点（右揃え） */
 .scoreboard-col-score {
     font-weight: bold;
     color: #cbd5e1;
@@ -600,7 +596,6 @@ body {
     flex-shrink: 0;
 }
 
-/* カラム4: 得点差（右揃え） */
 .scoreboard-col-diff {
     text-align: right;
     white-space: nowrap;
@@ -812,4 +807,254 @@ body {
     padding: 2px 4px;
     font-size: 11px;
     text-align: right;
+}
+
+/* ===================================================
+   リザルト画面UIスタイル (2カラムGrid・1位ゴールドスポットライト演出)
+   =================================================== */
+.result-modal-content {
+    position: relative;
+    max-width: 500px;
+    background: #0f172a;
+    border: 2px solid #f1c40f;
+    border-radius: 12px;
+    padding: 30px 25px 25px 25px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.85);
+    overflow: hidden;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+/* 背景スポットライト光錐エフェクト */
+.result-spotlight-beam {
+    position: absolute;
+    top: -80px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: 380px;
+    background: radial-gradient(ellipse at top, rgba(241, 196, 15, 0.35) 0%, rgba(241, 196, 15, 0.08) 55%, transparent 75%);
+    clip-path: polygon(30% 0%, 70% 0%, 100% 100%, 0% 100%);
+    pointer-events: none;
+    animation: spotlightPulseAnim 2.8s ease-in-out infinite alternate;
+    z-index: 1;
+}
+
+@keyframes spotlightPulseAnim {
+    0% {
+        opacity: 0.6;
+        transform: translateX(-50%) scaleX(0.9);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(-50%) scaleX(1.1);
+    }
+}
+
+.result-title {
+    position: relative;
+    z-index: 2;
+    margin: 0;
+    font-size: 1.6em;
+    font-weight: 900;
+    color: #f1c40f;
+    text-shadow: 0 0 15px rgba(241, 196, 15, 0.8), 0 2px 4px rgba(0, 0, 0, 0.9);
+    letter-spacing: 1px;
+}
+
+.result-subtitle {
+    position: relative;
+    z-index: 2;
+    font-size: 0.88em;
+    color: #94a3b8;
+    margin: 6px 0 18px 0;
+}
+
+.result-ranking-list {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 22px;
+}
+
+/* 2カラムグリッド構造（順位プレイヤー情報 + 得点） */
+.result-row {
+    display: grid;
+    grid-template-columns: minmax(auto, 1fr) auto;
+    align-items: center;
+    gap: 15px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: rgba(30, 41, 59, 0.65);
+    border: 1px solid rgba(71, 85, 105, 0.6);
+    opacity: 0.72;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.result-row.row-me {
+    border-color: #38bdf8;
+}
+
+/* 1位（勝者）専用：ゴールドフレーム＆パルスグロー */
+.result-row.row-winner {
+    opacity: 1;
+    transform: scale(1.03);
+    background: linear-gradient(90deg, rgba(241, 196, 15, 0.22) 0%, rgba(243, 156, 18, 0.38) 50%, rgba(241, 196, 15, 0.22) 100%);
+    border: 2px solid #f1c40f;
+    box-shadow: 0 0 25px rgba(241, 196, 15, 0.7);
+    z-index: 5;
+    animation: winnerGlowAnim 2s ease-in-out infinite alternate;
+}
+
+@keyframes winnerGlowAnim {
+    0% {
+        box-shadow: 0 0 15px rgba(241, 196, 15, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 0 30px rgba(241, 196, 15, 0.9);
+    }
+}
+
+/* カラム1: プレイヤー情報 */
+.result-col-player {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    text-align: left;
+}
+
+.result-rank-badge {
+    font-weight: 900;
+    font-size: 14px;
+    color: #94a3b8;
+    width: 38px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.result-rank-badge.rank-winner {
+    color: #f1c40f;
+    font-size: 16px;
+    text-shadow: 0 0 10px rgba(241, 196, 15, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: auto;
+    margin-right: 2px;
+}
+
+.result-crown-icon {
+    font-size: 18px;
+    animation: crownBounceAnim 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes crownBounceAnim {
+    0% {
+        transform: translateY(0);
+    }
+
+    100% {
+        transform: translateY(-3px);
+    }
+}
+
+.result-avatar {
+    width: 26px;
+    height: 26px;
+    aspect-ratio: 1 / 1;
+    border-radius: 6px;
+    border: 1.5px solid #64748b;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #0f172a;
+}
+
+.row-winner .result-avatar {
+    border-color: #f1c40f;
+    box-shadow: 0 0 8px rgba(241, 196, 15, 0.6);
+}
+
+.result-player-name {
+    font-weight: bold;
+    font-size: 14px;
+    color: #f8fafc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+.result-winner-tag {
+    background: linear-gradient(135deg, #f1c40f, #e67e22);
+    color: #000;
+    font-size: 10px;
+    font-weight: 900;
+    padding: 2px 7px;
+    border-radius: 10px;
+    margin-left: 6px;
+    flex-shrink: 0;
+    box-shadow: 0 0 10px rgba(241, 196, 15, 0.8);
+    letter-spacing: 0.5px;
+}
+
+/* カラム2: 得点（右揃え） */
+.result-col-score {
+    font-weight: 900;
+    font-size: 15px;
+    color: #38bdf8;
+    text-align: right;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.row-winner .result-col-score {
+    color: #f1c40f;
+    font-size: 17px;
+    text-shadow: 0 0 12px rgba(241, 196, 15, 0.8);
+}
+
+/* ボタンコンテナ */
+.result-btn-container {
+    position: relative;
+    z-index: 3;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.result-btn-rematch {
+    background: #27ae60;
+    color: #fff;
+    font-size: 1.1em;
+    padding: 12px 30px;
+    font-weight: bold;
+    margin: 0;
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.4);
+    transition: background 0.2s, transform 0.15s;
+}
+
+.result-btn-rematch:hover {
+    background: #2ecc71;
+    transform: scale(1.04);
+}
+
+.result-btn-leave {
+    background: #c0392b;
+    color: #fff;
+    font-size: 1.1em;
+    padding: 12px 30px;
+    font-weight: bold;
+    margin: 0;
+    box-shadow: 0 4px 12px rgba(192, 57, 43, 0.4);
+    transition: background 0.2s, transform 0.15s;
+}
+
+.result-btn-leave:hover {
+    background: #e74c3c;
+    transform: scale(1.04);
 }

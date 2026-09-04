@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、ロビー待機エントリー、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定
+ * 通信、ロビー待機エントリー、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定、リザルト連携
  */
 
 const socket = io();
@@ -162,6 +162,38 @@ socket.on('joinSuccess', (data) => {
 socket.on('cancelJoinSuccess', () => {
     isJoinedGame = false;
     myPlayerNumber = null;
+    updateLobbyUI();
+});
+
+// 全10巡終了時のリザルト画面表示
+socket.on('gameOver', (data) => {
+    window.closeDropActionModal();
+    window.closeTimeBombModal();
+
+    setTimeout(() => {
+        if (window.ResultModal && typeof window.ResultModal.show === 'function') {
+            window.ResultModal.show(data.players, myId, availablePresetAvatars);
+        }
+    }, 600);
+});
+
+// 再戦エントリー成功時の画面遷移
+socket.on('rematchSuccess', (data) => {
+    isJoinedGame = true;
+    myPlayerNumber = data.playerNumber;
+
+    if (window.ResultModal) window.ResultModal.close();
+    document.getElementById('game-main').style.display = 'none';
+    updateLobbyUI();
+});
+
+// 退出成功時の画面遷移（ロビー待機へ）
+socket.on('leaveToLobbySuccess', () => {
+    isJoinedGame = false;
+    myPlayerNumber = null;
+
+    if (window.ResultModal) window.ResultModal.close();
+    document.getElementById('game-main').style.display = 'none';
     updateLobbyUI();
 });
 

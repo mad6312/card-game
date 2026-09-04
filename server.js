@@ -79,6 +79,21 @@ function skipDraftAndStartGame() {
         p.score = 25000;
         p.prevScore = 25000;
         p.scoreChange = 0;
+        p.hand = [];
+        p.defenseCard = null;
+        p.immunityCount = 0;
+        p.invincibleTurns = 0;
+        p.invincibleSource = null;
+        p.armorRevealed = false;
+        p.steroidTurns = 0;
+        p.steroidRevealed = false;
+        p.darknessTurns = 0;
+        p.timeBombTurns = 0;
+        p.bombTransferAttempted = false;
+        p.bombDrawnThisTurn = false;
+        p.playedHandCardThisTurn = false;
+        p.playedObanThisTurn = false;
+        p.playedDarkMatterThisTurn = false;
         p.draftResolved = true;
     });
 
@@ -86,6 +101,12 @@ function skipDraftAndStartGame() {
     gameState.draft.phase = 'FINISHED';
     gameState.round = 1;
     gameState.actedPlayerIds = [];
+    gameState.cardCooldowns = {
+        diamond_sword: 0,
+        earthquake: 0,
+        disaster: 0,
+        smoke_screen: 0
+    };
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
@@ -167,7 +188,7 @@ function getNextPlayerId() {
         const isAllEqualScore = allPlayers.every(p => p.score === firstScore);
 
         if (isAllEqualScore) {
-            const sortedByNumber = [...unactedPlayers].sort((a, b) => a - b.number);
+            const sortedByNumber = [...unactedPlayers].sort((a, b) => a.number - b.number);
             return sortedByNumber[0].id;
         }
     }
@@ -307,14 +328,27 @@ function proceedToNextTurn() {
     });
 
     function finalizeNextTurn(alreadyLoggedExpire = false) {
+        // 全員行動完了時の巡目チェック（第10巡終了時の完全停止判定）
         if (gameState.actedPlayerIds.length >= Object.keys(gameState.players).length) {
-            gameState.round += 1;
-            gameState.actedPlayerIds = [];
+            if (gameState.round >= 10) {
+                gameState.started = false;
+                gameState.turnPhase = 'GAME_OVER';
 
-            if (gameState.round > 10) {
-                broadcastGameState('全10巡が終了しました！ゲーム終了！');
+                const finalPlayers = Object.values(gameState.players).map(p => ({
+                    id: p.id,
+                    number: p.number,
+                    name: p.name,
+                    avatar: p.avatar,
+                    score: p.score
+                }));
+
+                io.emit('gameOver', { players: finalPlayers });
+                broadcastGameState('全10巡が終了しました！ゲーム終了！結果発表です！');
                 return;
             }
+
+            gameState.round += 1;
+            gameState.actedPlayerIds = [];
         }
 
         const nextPlayerId = getNextPlayerId();
@@ -405,7 +439,7 @@ io.on('connection', (socket) => {
             socket.emit('errorMessage', 'ゲームはすでに開始されています。');
             return;
         }
-        if (gameState.players[socket.id]) return; // 既に参加中
+        if (gameState.players[socket.id]) return;
 
         const currentPlayers = Object.values(gameState.players);
         if (currentPlayers.length >= 4) {
@@ -413,7 +447,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // 1〜4の中で空いている最小の番号を算出
         const usedNumbers = currentPlayers.map(p => p.number);
         let pNum = 1;
         for (let i = 1; i <= 4; i++) {
@@ -479,6 +512,82 @@ io.on('connection', (socket) => {
 
         delete gameState.players[socket.id];
         socket.emit('cancelJoinSuccess');
+
+        const newCount = Object.keys(gameState.players).length;
+        io.emit('playerUpdate', { playerCount: newCount, started: false });
+    });
+
+    // リザルト画面：再戦エントリー要求
+    socket.on('requestRematch', () => {
+        let player = gameState.players[socket.id];
+        const profile = socketProfiles[socket.id] || { name: `プレイヤー`, avatar: DEFAULT_AVATAR_ID };
+
+        if (!player) {
+            const currentPlayers = Object.values(gameState.players);
+            if (currentPlayers.length >= 4) {
+                socket.emit('errorMessage', '定員（4名）に達しています。');
+                return;
+            }
+            const usedNumbers = currentPlayers.map(p => p.number);
+            let pNum = 1;
+            for (let i = 1; i <= 4; i++) {
+                if (!usedNumbers.includes(i)) {
+                    pNum = i;
+                    break;
+                }
+            }
+            let finalName = profile.name && profile.name !== 'プレイヤー' ? profile.name : `P${pNum}`;
+            player = {
+                id: socket.id,
+                number: pNum,
+                name: finalName,
+                avatar: profile.avatar || DEFAULT_AVATAR_ID
+            };
+            gameState.players[socket.id] = player;
+        }
+
+        // 初期ステータスへ完全リセット
+        player.score = 25000;
+        player.prevScore = 25000;
+        player.scoreChange = 0;
+        player.hand = [];
+        player.defenseCard = null;
+        player.draftResolved = false;
+        player.immunityCount = 0;
+        player.invincibleTurns = 0;
+        player.invincibleSource = null;
+        player.armorRevealed = false;
+        player.steroidTurns = 0;
+        player.steroidRevealed = false;
+        player.darknessTurns = 0;
+        player.timeBombTurns = 0;
+        player.bombTransferAttempted = false;
+        player.bombDrawnThisTurn = false;
+        player.playedHandCardThisTurn = false;
+        player.playedObanThisTurn = false;
+        player.playedDarkMatterThisTurn = false;
+
+        socket.emit('rematchSuccess', {
+            playerNumber: player.number,
+            name: player.name,
+            avatar: player.avatar
+        });
+
+        const newCount = Object.keys(gameState.players).length;
+        io.emit('playerUpdate', { playerCount: newCount, started: false });
+
+        // 全員揃っていれば即時新ゲーム開始
+        if (newCount === 4 && (!gameState.started || gameState.turnPhase === 'GAME_OVER')) {
+            skipDraftAndStartGame();
+        }
+    });
+
+    // リザルト画面：退出してロビー待機へ戻る
+    socket.on('leaveToLobby', () => {
+        if (gameState.players[socket.id]) {
+            delete gameState.players[socket.id];
+        }
+        socket.emit('leaveToLobbySuccess');
 
         const newCount = Object.keys(gameState.players).length;
         io.emit('playerUpdate', { playerCount: newCount, started: false });

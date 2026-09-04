@@ -68,7 +68,7 @@
         <h2>対戦カードゲーム</h2>
         <div id="status">接続待機中...</div>
 
-        <!-- ロビー待機・エントリーエリア（新規追加） -->
+        <!-- ロビー待機・エントリーエリア -->
         <div id="lobby-area" class="card"
             style="text-align: center; max-width: 500px; margin: 25px auto; padding: 25px; border: 1.5px solid #475569;">
             <h3 style="margin-top: 0; color: #f1c40f; border-bottom: 1px solid #334155; padding-bottom: 8px;">🎮 対戦待機ロビー
@@ -222,6 +222,24 @@
                 </div>
             </div>
         </div>
+
+        <!-- リザルト画面モーダル（新規追加） -->
+        <div id="result-modal" class="modal">
+            <div class="modal-content result-modal-content">
+                <div class="result-spotlight-beam"></div>
+                <h2 class="result-title">🏆 最終結果発表 🏆</h2>
+                <div class="result-subtitle">全10巡の対戦が終了しました！</div>
+                <div id="result-ranking-list" class="result-ranking-list"></div>
+                <div class="result-btn-container">
+                    <button class="btn result-btn-rematch" onclick="window.ResultModal.handleRematch()">
+                        🔄 再戦
+                    </button>
+                    <button class="btn result-btn-leave" onclick="window.ResultModal.handleLeave()">
+                        🚪 退出する
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 攻撃カットイン全画面オーバーレイ -->
@@ -244,6 +262,8 @@
     <script src="/scoreboard.js"></script>
     <!-- 攻撃カットイン演出制御モジュール -->
     <script src="/attackAnimation.js"></script>
+    <!-- リザルト画面制御モジュール（新規追加） -->
+    <script src="/result.js"></script>
     <!-- モーダル・アクション制御モジュール -->
     <script src="/game_modal.js"></script>
     <!-- メインフロントエンドロジック -->
