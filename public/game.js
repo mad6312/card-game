@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定UI/UX、リザルト連携、本番デバッグ切り替え
+ * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定UI/UX、リザルト連携、本番デバッグ切り替え、新ゲームログ初期化
  */
 
 const socket = io();
@@ -187,11 +187,14 @@ socket.on('cancelJoinSuccess', () => {
     updateLobbyUI();
 });
 
-// 本番ドラフトフェーズ開始イベント受信
+// 本番ドラフトフェーズ開始イベント受信（前回の対戦ログをクリア）
 socket.on('startDraft', (data) => {
     if (window.ResultModal) window.ResultModal.close();
     document.getElementById('lobby-area').style.display = 'none';
     document.getElementById('game-main').style.display = 'none';
+
+    const logBox = document.getElementById('log-box');
+    if (logBox) logBox.innerText = '';
 
     if (window.DraftManager) {
         window.DraftManager.render(data, myId);
@@ -231,6 +234,9 @@ socket.on('rematchSuccess', (data) => {
     myPlayerNumber = data.playerNumber;
     mySelectedAvatarId = data.avatar;
 
+    const logBox = document.getElementById('log-box');
+    if (logBox) logBox.innerText = '';
+
     if (window.ResultModal) window.ResultModal.close();
     if (window.DraftManager) window.DraftManager.close();
     document.getElementById('game-main').style.display = 'none';
@@ -241,6 +247,9 @@ socket.on('rematchSuccess', (data) => {
 socket.on('leaveToLobbySuccess', () => {
     isJoinedGame = false;
     myPlayerNumber = null;
+
+    const logBox = document.getElementById('log-box');
+    if (logBox) logBox.innerText = '';
 
     if (window.ResultModal) window.ResultModal.close();
     if (window.DraftManager) window.DraftManager.close();
@@ -402,7 +411,6 @@ function openUserSettingsModal() {
         const nameInput = document.getElementById('user-name-input');
         if (nameInput) nameInput.value = latestGameState.players[myId].name;
     }
-    // フィードバックメッセージを初期化
     const feedback = document.getElementById('name-change-feedback');
     if (feedback) feedback.innerText = '';
 
@@ -427,7 +435,6 @@ function submitNameChange() {
 
     socket.emit('changePlayerName', { newName });
 
-    // モーダルを閉じずに「変更しました！」フィードバックを表示
     if (feedback) {
         feedback.innerText = '✓ 変更しました！';
         feedback.style.color = '#2ecc71';
@@ -444,7 +451,6 @@ function renderAvatarPicker() {
     if (!container) return;
     container.innerHTML = '';
 
-    // 現在選択中のアバターID（参加中・未参加問わず正確に反映）
     let currentAvatarId = mySelectedAvatarId;
     if (latestGameState && myId && latestGameState.players[myId]) {
         currentAvatarId = latestGameState.players[myId].avatar;
@@ -455,14 +461,12 @@ function renderAvatarPicker() {
         img.src = av.image;
         img.alt = av.name;
         img.title = av.name;
-        // 初期表示時：現在のアバター画像を強調表示
         img.className = `avatar-picker-item ${av.id === currentAvatarId ? 'selected' : ''}`;
         img.onerror = () => { img.src = '/images/avatars/avatar_default.png'; };
         img.onclick = () => {
             mySelectedAvatarId = av.id;
             socket.emit('changePlayerAvatar', { avatarId: av.id });
 
-            // モーダルを開いたまま、クリックしたアバターを即座に枠線強調表示に切り替え
             container.querySelectorAll('.avatar-picker-item').forEach(el => el.classList.remove('selected'));
             img.classList.add('selected');
         };
@@ -511,6 +515,17 @@ socket.on('errorMessage', (msg) => { alert(msg); });
 socket.on('syncGameState', (data) => {
     latestGameState = data;
     window.latestGameState = latestGameState;
+
+    const logBox = document.getElementById('log-box');
+
+    // ★新ゲーム開始時：過去の対戦ログを完全に初期化（クリア）
+    if (data.isNewGame && logBox) {
+        logBox.innerText = '';
+        currentRenderedScores = {};
+        targetRenderedScores = {};
+        activeScoreRollAnimators = {};
+        activeScorePopups = {};
+    }
 
     // デバッグパネルの表示/非表示（本番環境ガード）
     const debugPanel = document.getElementById('debug-panel-root');
@@ -567,8 +582,6 @@ socket.on('syncGameState', (data) => {
     }
 
     document.getElementById('round-info').innerText = `第 ${data.round} 巡目 / 全10巡`;
-
-    const logBox = document.getElementById('log-box');
 
     if (data.players && logBox) {
         Object.values(data.players).forEach(p => {

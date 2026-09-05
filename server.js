@@ -20,22 +20,16 @@ app.use(express.static('public'));
 
 // ===================================================
 // 【本番 / 開発環境切り替えフラグ】
-// 本番公開時は環境変数 NODE_ENV=production で起動するか、
-// 下記を直接 false に設定することで全デバッグ機能が完全に封印されます。
 // ===================================================
 const IS_DEBUG = process.env.NODE_ENV !== 'production';
-//const IS_DEBUG = false;
 
 let cardSettings = createInitialCardSettings();
 
-// 本番時(IS_DEBUG: false)は厳格な本番ルール、開発時(IS_DEBUG: true)は効率化初期値
 let showOtherPlayersInfo = IS_DEBUG ? true : false;
 let skipBonusModal = IS_DEBUG ? true : false;
 let ignoreDrawRestrictions = IS_DEBUG ? true : false;
 
-// 接続ソケットごとのプロファイル（未エントリー時も保持）
 const socketProfiles = {};
-// 接続順序を記録するソケットIDリスト
 let connectionOrder = [];
 
 function createInitialState() {
@@ -64,7 +58,17 @@ function createInitialState() {
 
 let gameState = createInitialState();
 
-function getSyncPayload(customLog = '') {
+function getActiveJoinedCount() {
+    if (gameState.started) {
+        return Object.keys(gameState.players).length;
+    }
+    if (gameState.turnPhase === 'GAME_OVER') {
+        return Object.values(gameState.players).filter(p => p.rematchAgreed).length;
+    }
+    return Object.keys(gameState.players).length;
+}
+
+function getSyncPayload(customLog = '', isNewGame = false) {
     return {
         players: gameState.players,
         turnOrder: gameState.turnOrder,
@@ -78,12 +82,13 @@ function getSyncPayload(customLog = '') {
         isDebugMode: IS_DEBUG,
         started: gameState.started,
         draft: gameState.draft,
+        isNewGame: isNewGame, // 新ゲーム開始時のログ初期化フラグ
         log: customLog
     };
 }
 
-function broadcastGameState(customLog = '') {
-    io.emit('syncGameState', getSyncPayload(customLog));
+function broadcastGameState(customLog = '', isNewGame = false) {
+    io.emit('syncGameState', getSyncPayload(customLog, isNewGame));
 }
 
 // 本番仕様：4人揃った際のドラフトフェーズ開始
@@ -95,24 +100,31 @@ function startDraftPhase() {
         timer: null
     };
 
+    const confirmedPlayers = {};
     Object.values(gameState.players).forEach(p => {
-        p.score = 25000;
-        p.prevScore = 25000;
-        p.scoreChange = 0;
-        p.draftResolved = false;
+        if (p.rematchAgreed !== false) {
+            p.score = 25000;
+            p.prevScore = 25000;
+            p.scoreChange = 0;
+            p.draftResolved = false;
+            p.rematchAgreed = false;
+            confirmedPlayers[p.id] = p;
+        }
     });
+    gameState.players = confirmedPlayers;
 
     io.emit('startDraft', {
         availableScores: gameState.draft.availableScores,
         players: gameState.players
     });
 
-    broadcastGameState('4人揃いました！初期得点ドラフトを開始します。');
+    // ログをリセットしてドラフト開始を通知
+    broadcastGameState('4人揃いました！初期得点ドラフトを開始します。', true);
 }
 
 // デバッグ仕様：一括強制参加＆ドラフトスキップ即時開始
 function forceJoinAndStartGame(triggerSocket) {
-    if (!IS_DEBUG) return; // 本番環境では完全無効化
+    if (!IS_DEBUG) return;
 
     const activeSocketIds = connectionOrder.filter(id => io.sockets.sockets.has(id));
 
@@ -143,6 +155,7 @@ function forceJoinAndStartGame(triggerSocket) {
             hand: [],
             defenseCard: null,
             draftResolved: true,
+            rematchAgreed: false,
             immunityCount: 0,
             invincibleTurns: 0,
             invincibleSource: null,
@@ -194,6 +207,7 @@ function skipDraftAndStartGame() {
         p.playedObanThisTurn = false;
         p.playedDarkMatterThisTurn = false;
         p.draftResolved = true;
+        p.rematchAgreed = false;
     });
 
     gameState.started = true;
@@ -209,7 +223,8 @@ function skipDraftAndStartGame() {
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
-    broadcastGameState('ゲームを開始します。（ドラフトスキップ：全員25,000点）');
+    // ログを完全リセットしてゲーム開始を通知
+    broadcastGameState('ゲームを開始します。（全員25,000点）', true);
 }
 
 // ドラフト解決：ランダム勝敗抽選＆自動割り当て例外処理
@@ -227,13 +242,11 @@ function resolveDraft() {
 
     const logs = [];
 
-    // 得点グループごとに勝敗判定
     Object.keys(chosenMap).forEach(scoreStr => {
         const score = Number(scoreStr);
         const playerIds = chosenMap[score];
 
         if (playerIds.length === 1) {
-            // 単独選出：無条件で獲得確定
             const winnerId = playerIds[0];
             const p = gameState.players[winnerId];
             p.score += score;
@@ -246,7 +259,6 @@ function resolveDraft() {
             const signStr = score > 0 ? `+${score.toLocaleString()}` : (score < 0 ? `${score.toLocaleString()}` : '±0');
             logs.push(`[ドラフト] ${p.name} が単独で【${signStr}点】を獲得しました。`);
         } else if (playerIds.length > 1) {
-            // バッティング競合：ランダム抽選で1名の勝者を決定
             const winnerIdx = Math.floor(Math.random() * playerIds.length);
             const winnerId = playerIds[winnerIdx];
             const winnerPlayer = gameState.players[winnerId];
@@ -266,13 +278,10 @@ function resolveDraft() {
         }
     });
 
-    // 選択状態をリセット
     gameState.draft.choices = {};
 
-    // 残り未確定プレイヤーのチェック
     let remainingUnresolved = Object.keys(gameState.players).filter(id => !gameState.players[id].draftResolved);
 
-    // 【自動割り当ての例外ルール】残り未確定者が1名、かつ残存得点が1つの場合
     if (remainingUnresolved.length === 1 && gameState.draft.availableScores.length === 1) {
         const lastPlayerId = remainingUnresolved[0];
         const lastPlayer = gameState.players[lastPlayerId];
@@ -290,7 +299,6 @@ function resolveDraft() {
     }
 
     if (remainingUnresolved.length === 0) {
-        // 全員確定！ゲーム開始
         gameState.started = true;
         gameState.draft.phase = 'FINISHED';
 
@@ -306,9 +314,9 @@ function resolveDraft() {
         gameState.turnPhase = 'BONUS_CHOICE';
 
         const finalLog = logs.join('\n') + '\nドラフト完了！ゲームを開始します。';
-        broadcastGameState(finalLog);
+        // ログをリセットして新ゲーム開始
+        broadcastGameState(finalLog, true);
     } else {
-        // 競合発生：敗北者に残存選択肢を提示して再選択
         io.emit('draftConflict', {
             unresolvedIds: remainingUnresolved,
             availableScores: gameState.draft.availableScores,
@@ -407,7 +415,6 @@ function proceedToNextTurn() {
     const expireLogs = [];
     let hasScoreChangeOnExpire = false;
 
-    // 1. バフ解除・時限爆弾処理
     Object.values(gameState.players).forEach(p => {
         if (p.invincibleTurns > 0 && p.invincibleSource === 'ARMOR') {
             p.invincibleTurns -= 1;
@@ -473,6 +480,10 @@ function proceedToNextTurn() {
                 gameState.started = false;
                 gameState.turnPhase = 'GAME_OVER';
 
+                Object.values(gameState.players).forEach(p => {
+                    p.rematchAgreed = false;
+                });
+
                 const finalPlayers = Object.values(gameState.players).map(p => ({
                     id: p.id,
                     number: p.number,
@@ -482,6 +493,7 @@ function proceedToNextTurn() {
                 }));
 
                 io.emit('gameOver', { players: finalPlayers });
+                io.emit('playerUpdate', { playerCount: 0, started: false });
                 broadcastGameState('全10巡が終了しました！ゲーム終了！結果発表です！');
                 return;
             }
@@ -549,7 +561,7 @@ io.on('connection', (socket) => {
     };
 
     const isJoined = !!gameState.players[socket.id];
-    const joinedCount = Object.keys(gameState.players).length;
+    const joinedCount = getActiveJoinedCount();
 
     socket.emit('init', {
         id: socket.id,
@@ -573,21 +585,37 @@ io.on('connection', (socket) => {
         socket.emit('playerUpdate', { playerCount: joinedCount, started: false });
     }
 
-    // 参加する（エントリー）
     socket.on('joinGame', () => {
         if (gameState.started) {
             socket.emit('errorMessage', 'ゲームはすでに開始されています。');
             return;
         }
-        if (gameState.players[socket.id]) return;
 
-        const currentPlayers = Object.values(gameState.players);
-        if (currentPlayers.length >= 4) {
+        if (gameState.turnPhase === 'GAME_OVER' && gameState.players[socket.id]) {
+            gameState.players[socket.id].rematchAgreed = true;
+            socket.emit('joinSuccess', {
+                playerNumber: gameState.players[socket.id].number,
+                name: gameState.players[socket.id].name,
+                avatar: gameState.players[socket.id].avatar
+            });
+            const count = getActiveJoinedCount();
+            io.emit('playerUpdate', { playerCount: count, started: false });
+            if (count === 4) startDraftPhase();
+            return;
+        }
+
+        if (gameState.players[socket.id] && gameState.players[socket.id].rematchAgreed !== false) return;
+
+        const currentActiveCount = getActiveJoinedCount();
+        if (currentActiveCount >= 4) {
             socket.emit('errorMessage', '定員（4名）に達しているため参加できません。');
             return;
         }
 
-        const usedNumbers = currentPlayers.map(p => p.number);
+        const usedNumbers = Object.values(gameState.players)
+            .filter(p => p.rematchAgreed !== false)
+            .map(p => p.number);
+
         let pNum = 1;
         for (let i = 1; i <= 4; i++) {
             if (!usedNumbers.includes(i)) {
@@ -598,9 +626,7 @@ io.on('connection', (socket) => {
 
         const profile = socketProfiles[socket.id] || { name: `P${pNum}`, avatar: DEFAULT_AVATAR_ID };
         let finalName = profile.name;
-        if (!finalName || finalName === 'プレイヤー') {
-            finalName = `P${pNum}`;
-        }
+        if (!finalName || finalName === 'プレイヤー') finalName = `P${pNum}`;
 
         gameState.players[socket.id] = {
             id: socket.id,
@@ -613,6 +639,7 @@ io.on('connection', (socket) => {
             hand: [],
             defenseCard: null,
             draftResolved: false,
+            rematchAgreed: true,
             immunityCount: 0,
             invincibleTurns: 0,
             invincibleSource: null,
@@ -634,7 +661,7 @@ io.on('connection', (socket) => {
             avatar: profile.avatar || DEFAULT_AVATAR_ID
         });
 
-        const newCount = Object.keys(gameState.players).length;
+        const newCount = getActiveJoinedCount();
         io.emit('playerUpdate', { playerCount: newCount, started: false });
 
         if (newCount === 4) {
@@ -642,7 +669,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 参加キャンセル（エントリー解除）
     socket.on('cancelJoin', () => {
         if (gameState.started) {
             socket.emit('errorMessage', 'ゲーム開始後はキャンセルできません。');
@@ -650,14 +676,18 @@ io.on('connection', (socket) => {
         }
         if (!gameState.players[socket.id]) return;
 
-        delete gameState.players[socket.id];
+        if (gameState.turnPhase === 'GAME_OVER') {
+            gameState.players[socket.id].rematchAgreed = false;
+        } else {
+            delete gameState.players[socket.id];
+        }
+
         socket.emit('cancelJoinSuccess');
 
-        const newCount = Object.keys(gameState.players).length;
+        const newCount = getActiveJoinedCount();
         io.emit('playerUpdate', { playerCount: newCount, started: false });
     });
 
-    // ドラフト得点選択
     socket.on('selectDraftScore', (score) => {
         if (gameState.started || gameState.draft.phase !== 'SELECTING') return;
         const player = gameState.players[socket.id];
@@ -675,24 +705,24 @@ io.on('connection', (socket) => {
         }
     });
 
-    // デバッグ機能：一括強制参加＆スキップ即時開始（サーバー側ガード）
     socket.on('debugForceJoinAndStartGame', () => {
         if (!IS_DEBUG) return;
         forceJoinAndStartGame(socket);
     });
 
-    // リザルト画面：再戦エントリー要求
     socket.on('requestRematch', () => {
         let player = gameState.players[socket.id];
         const profile = socketProfiles[socket.id] || { name: `プレイヤー`, avatar: DEFAULT_AVATAR_ID };
 
         if (!player) {
-            const currentPlayers = Object.values(gameState.players);
-            if (currentPlayers.length >= 4) {
+            const currentActive = getActiveJoinedCount();
+            if (currentActive >= 4) {
                 socket.emit('errorMessage', '定員（4名）に達しています。');
                 return;
             }
-            const usedNumbers = currentPlayers.map(p => p.number);
+            const usedNumbers = Object.values(gameState.players)
+                .filter(p => p.rematchAgreed)
+                .map(p => p.number);
             let pNum = 1;
             for (let i = 1; i <= 4; i++) {
                 if (!usedNumbers.includes(i)) {
@@ -716,6 +746,7 @@ io.on('connection', (socket) => {
         player.hand = [];
         player.defenseCard = null;
         player.draftResolved = false;
+        player.rematchAgreed = true;
         player.immunityCount = 0;
         player.invincibleTurns = 0;
         player.invincibleSource = null;
@@ -736,10 +767,10 @@ io.on('connection', (socket) => {
             avatar: player.avatar
         });
 
-        const newCount = Object.keys(gameState.players).length;
-        io.emit('playerUpdate', { playerCount: newCount, started: false });
+        const readyCount = getActiveJoinedCount();
+        io.emit('playerUpdate', { playerCount: readyCount, started: false });
 
-        if (newCount === 4 && (!gameState.started || gameState.turnPhase === 'GAME_OVER')) {
+        if (readyCount === 4) {
             startDraftPhase();
         }
     });
@@ -750,8 +781,8 @@ io.on('connection', (socket) => {
         }
         socket.emit('leaveToLobbySuccess');
 
-        const newCount = Object.keys(gameState.players).length;
-        io.emit('playerUpdate', { playerCount: newCount, started: false });
+        const remainingCount = getActiveJoinedCount();
+        io.emit('playerUpdate', { playerCount: remainingCount, started: false });
     });
 
     socket.on('changePlayerName', ({ newName }) => {
@@ -801,7 +832,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // デバッグ用Socketイベントのサーバー側完全ガード
     socket.on('togglePublicInfoSetting', (enabled) => {
         if (!IS_DEBUG) return;
         showOtherPlayersInfo = enabled;
@@ -1387,7 +1417,7 @@ io.on('connection', (socket) => {
         const wasJoined = !!gameState.players[socket.id];
         if (!gameState.started && wasJoined) {
             delete gameState.players[socket.id];
-            const newCount = Object.keys(gameState.players).length;
+            const newCount = getActiveJoinedCount();
             io.emit('playerUpdate', { playerCount: newCount, started: false });
         }
 

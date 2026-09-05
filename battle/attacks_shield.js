@@ -1,6 +1,7 @@
 /**
  * 盾系攻撃カード実行モジュール (battle/attacks_shield.js)
  * 木の盾・青銅の盾・木の盾セット・青銅の盾セット
+ * ※命中率0%のプレイヤーを対象およびカットイン演出から完全に除外
  */
 
 const {
@@ -45,7 +46,7 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
     let finalLog = '';
     let pendingDarkMatterCutin = null;
 
-    // 1. 防御カード判定（セット中または手札からの自動セット）
+    // 防御カード判定（セット中または手札からの自動セット）
     const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
     const defResult = (!isTargetBuffed || target.defenseCard)
         ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
@@ -67,7 +68,7 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
         finalLog = logPrefix + `命中！しかし ${target.name} は「無敵状態」のため攻撃が無効化されました！`;
         cutinRes = 'INVINCIBLE';
     } else {
-        // 手札カウンター（ステロイド/無敵アーマー/ダークマター）判定
+        // 手札カウンター判定
         const autoRes = tryAutoTriggerDefense(gameState, target, {
             allowSteroid: true,
             isImmuneToRound1CardEffect: skipIfImmuneToRound1CardEffect,
@@ -123,19 +124,21 @@ function executeBronzeShieldClosestAttack(gameState, attackerId, io, broadcastGa
     }, duration);
 }
 
-// 青銅の盾（グループ攻撃：カットイン完全同期）
+// 青銅の盾（グループ攻撃：点差5,000点以上[命中率0%]を完全除外）
 function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
 
     const myScore = attacker.score;
+    // 点差が5,000点未満（命中率 > 0%）のプレイヤーのみを抽出
     let candidates = Object.values(gameState.players).filter(p => {
         if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-        return p.score < myScore;
+        const diff = myScore - p.score;
+        return diff > 0 && diff < 5000;
     });
 
     if (candidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「青銅の盾」で攻撃を開始しましたが、対象となる下位プレイヤーがいませんでした。`);
+        broadcastGameState(`${attacker.name} が「青銅の盾」で攻撃を開始しましたが、対象となる下位プレイヤー（点差5,000点以内）がいませんでした。`);
         return;
     }
 
@@ -158,6 +161,7 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
         attackQueue.push(...group);
     });
 
+    // 命中率0%の除外されたプレイヤーのみでカットインを構築
     const defendersList = attackQueue.map(p => ({
         id: p.id,
         name: p.name,
@@ -191,7 +195,7 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
             continue;
         }
 
-        // 防御カード判定（セット中または手札からの自動セット）
+        // 防御カード判定
         const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
         const defResult = (!isTargetBuffed || target.defenseCard)
             ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
@@ -283,7 +287,7 @@ function executeBronzeShieldGroupAttack(gameState, attackerId, io, broadcastGame
     }, animDuration);
 }
 
-// 青銅の盾セット（単体最寄動的連撃：カットイン完全同期）
+// 青銅の盾セット（単体最寄動的連撃）
 function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, onComplete) {
     const attacker = gameState.players[attackerId];
     if (!attacker) { onComplete(); return; }
@@ -336,7 +340,7 @@ function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks
         let cutinRes = 'HIT';
         let defImg = null;
 
-        // 防御カード判定（セット中または手札からの自動セット）
+        // 防御カード判定
         const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
         const defResult = (!isTargetBuffed || target.defenseCard)
             ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
@@ -420,19 +424,21 @@ function executeBronzeShieldSetAttack(gameState, attackerId, cardObj, maxAttacks
     }, totalDuration);
 }
 
-// 青銅の盾セット（グループ連撃：カットイン完全同期）
+// 青銅の盾セット（グループ連撃：点差5,000点以上[命中率0%]を完全除外）
 function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, onComplete) {
     const attacker = gameState.players[attackerId];
     if (!attacker) { onComplete(); return; }
 
     const myScore = attacker.score;
+    // 点差が5,000点未満（命中率 > 0%）のプレイヤーのみを抽出
     const initialCandidates = Object.values(gameState.players).filter(p => {
         if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
-        return p.score < myScore;
+        const diff = myScore - p.score;
+        return diff > 0 && diff < 5000;
     });
 
     if (initialCandidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「青銅の盾セット」で攻撃を開始しましたが、対象となる下位プレイヤーがいませんでした。`);
+        broadcastGameState(`${attacker.name} が「青銅の盾セット」で攻撃を開始しましたが、対象となる下位プレイヤー（点差5,000点以内）がいませんでした。`);
         onComplete();
         return;
     }
@@ -474,7 +480,8 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
             const livePlayer = gameState.players[p.id];
             if (!livePlayer) return false;
             if (livePlayer.immunityCount && livePlayer.immunityCount > 0) return false;
-            return livePlayer.score < myScore;
+            const diff = myScore - livePlayer.score;
+            return diff > 0 && diff < 5000;
         });
 
         if (attackQueue.length === 0) break;
@@ -507,7 +514,7 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
                 continue;
             }
 
-            // 防御カード判定（セット中または手札からの自動セット）
+            // 防御カード判定
             const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
             const defResult = (!isTargetBuffed || target.defenseCard)
                 ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
@@ -608,20 +615,23 @@ function executeBronzeShieldSetGroupAttack(gameState, attackerId, cardObj, maxAt
     }, totalDuration);
 }
 
-// 木の盾（グループ攻撃：カットイン完全同期）
+// 木の盾（グループ攻撃：点差10,000点以上[命中率0%]を完全除外）
 function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
 
     const myScore = attacker.score;
 
+    // 点差が10,000点未満（命中率 > 0%）のプレイヤーのみを抽出
     let candidates = Object.values(gameState.players).filter(p => {
         if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
+        const diff = Math.abs(myScore - p.score);
+        if (diff >= 10000) return false; // 命中率0%を除外
         return groupType === 'EQUAL_OR_HIGHER' ? p.score >= myScore : p.score < myScore;
     });
 
     if (candidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「木の盾」で攻撃を開始しましたが、対象となるプレイヤーがいませんでした。`);
+        broadcastGameState(`${attacker.name} が「木の盾」で攻撃を開始しましたが、対象となるプレイヤー（点差10,000点未満）がいませんでした。`);
         return;
     }
 
@@ -644,6 +654,7 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
         attackQueue.push(...group);
     });
 
+    // 命中率0%を除外した対象のみでカットインを構築
     const defendersList = attackQueue.map(p => ({
         id: p.id,
         name: p.name,
@@ -677,7 +688,7 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
             continue;
         }
 
-        // 防御カード判定（セット中または手札からの自動セット）
+        // 防御カード判定
         const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
         const defResult = (!isTargetBuffed || target.defenseCard)
             ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
@@ -769,19 +780,23 @@ function executeWoodShieldGroupAttack(gameState, attackerId, groupType, io, broa
     }, animDuration);
 }
 
-// 木の盾セット（グループ連撃：複数回カットイン完全同期）
+// 木の盾セット（グループ連撃：点差10,000点以上[命中率0%]を完全除外）
 function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, maxAttacks, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, onComplete) {
     const attacker = gameState.players[attackerId];
     if (!attacker) { onComplete(); return; }
 
     const myScore = attacker.score;
+
+    // 点差が10,000点未満（命中率 > 0%）のプレイヤーのみを抽出
     const initialCandidates = Object.values(gameState.players).filter(p => {
         if (p.id === attackerId || (p.immunityCount && p.immunityCount > 0) || cannotSelectAsAttackTargetInRound1(attackerId, p.id)) return false;
+        const diff = Math.abs(myScore - p.score);
+        if (diff >= 10000) return false; // 命中率0%を除外
         return groupType === 'EQUAL_OR_HIGHER' ? p.score >= myScore : p.score < myScore;
     });
 
     if (initialCandidates.length === 0) {
-        broadcastGameState(`${attacker.name} が「木の盾セット」で攻撃を開始しましたが、対象となるプレイヤーがいませんでした。`);
+        broadcastGameState(`${attacker.name} が「木の盾セット」で攻撃を開始しましたが、対象となるプレイヤー（点差10,000点未満）がいませんでした。`);
         onComplete();
         return;
     }
@@ -819,10 +834,13 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
     for (let r = 0; r < maxAttacks; r++) {
         if (cardObj.usesLeft <= 0 || stoppedByInvincible) break;
 
+        // 各ラウンドでも点差10,000点未満の有効対象のみをフィルタ
         const attackQueue = sortedFixedList.filter(p => {
             const livePlayer = gameState.players[p.id];
             if (!livePlayer) return false;
             if (livePlayer.immunityCount && livePlayer.immunityCount > 0) return false;
+            const diff = Math.abs(myScore - livePlayer.score);
+            if (diff >= 10000) return false;
             return groupType === 'EQUAL_OR_HIGHER' ? livePlayer.score >= myScore : livePlayer.score < myScore;
         });
 
@@ -856,7 +874,7 @@ function executeShieldSetGroupAttack(gameState, attackerId, groupType, cardObj, 
                 continue;
             }
 
-            // 防御カード判定（セット中または手札からの自動セット）
+            // 防御カード判定
             const isTargetBuffed = (target.invincibleTurns > 0 || target.steroidTurns > 0);
             const defResult = (!isTargetBuffed || target.defenseCard)
                 ? tryAutoSetAndBlockDefense(gameState, target, attacker, {
