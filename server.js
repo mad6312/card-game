@@ -21,7 +21,8 @@ app.use(express.static('public'));
 // ===================================================
 // 【本番 / 開発環境切り替えフラグ】
 // ===================================================
-const IS_DEBUG = process.env.NODE_ENV !== 'production';
+//const IS_DEBUG = process.env.NODE_ENV !== 'production';
+const IS_DEBUG = false;
 
 let cardSettings = createInitialCardSettings();
 

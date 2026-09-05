@@ -1,6 +1,7 @@
 /**
  * 銃撃・爆撃系攻撃カード実行モジュール (battle/attacks_gun.js)
  * ショットガン・グレネード（単体/グループ/スプラッシュ/カウンター）
+ * ※ショットガン貫通時に対象のセット中防御カードを全公開する処理を追加
  */
 
 const { applyScoreChange } = require('./common');
@@ -54,7 +55,6 @@ function executeGrenadeDefenseCounter(gameState, defenderId, broadcastGameState)
         }
     });
 
-    // カウンター完了後にダークマターペナルティを解決
     pendingDarkMatterResolvers.forEach(resolver => {
         const res = resolver(gameState, null);
         if (res && res.penaltyLogSuffix) {
@@ -108,7 +108,6 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
     if (isHit) {
         const allVictims = allPlayers.filter(p => Math.abs(p.score - centerScore) <= 1000);
 
-        // 1. まずグレネードの直撃＆全スプラッシュ被弾処理を完全に実行
         allVictims.forEach(victim => {
             if (victim.id !== attackerId && isImmuneToRound1CardEffect(victim.id, attackerId)) {
                 affectedLogs.push(`${victim.name}(1巡目効果無効)`);
@@ -170,7 +169,6 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
             }
         });
 
-        // 2. グレネード処理が完全に完了した後に、遅延されていたダークマターペナルティを解決
         const pendingDarkMatterCutins = [];
         pendingDarkMatterResolvers.forEach(resolver => {
             const res = resolver(gameState, io);
@@ -181,7 +179,6 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
         });
 
         if (io) {
-            // 1. 元のグレネードカットイン
             io.emit('playAttackCutin', {
                 attacker: {
                     id: attacker.id,
@@ -203,7 +200,6 @@ function executeGrenadeSingleAttack(gameState, attackerId, targetId, io, broadca
                 }
             });
 
-            // 2. 自動発動したダークマターのカットイン
             pendingDarkMatterCutins.forEach(dmCutin => {
                 io.emit('playAttackCutin', dmCutin);
             });
@@ -319,7 +315,6 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
         const victimsData = [];
         const affectedLogs = [];
 
-        // 1. まずグレネードの全被弾処理を実行
         allVictims.forEach(victim => {
             if (victim.id !== attackerId && isImmuneToRound1CardEffect(victim.id, attackerId)) {
                 affectedLogs.push(`${victim.name}(1巡目効果無効)`);
@@ -381,7 +376,6 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
             }
         });
 
-        // 2. グレネード処理完了後にダークマターペナルティを遅延解決
         const pendingDarkMatterCutins = [];
         pendingDarkMatterResolvers.forEach(resolver => {
             const res = resolver(gameState, io);
@@ -425,7 +419,7 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
         }
 
         const baseDuration = Math.max(1200, steps.length * 600 + 1000);
-        const animDuration = pendingDarkMatterCutins.length > 0 ? (baseDuration + 1400 * pendingDarkMatterCutins.length) : baseDuration;
+        const animDuration = pendingDarkMatterCutin ? (baseDuration + 1400 * pendingDarkMatterCutin.length) : baseDuration;
         setTimeout(() => {
             broadcastGameState(finalLog);
         }, animDuration);
@@ -461,7 +455,7 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
     }, animDuration);
 }
 
-// ショットガン（単体・グループ：射撃＆貫通カットイン完全同期）
+// ショットガン（単体・グループ：貫通時に相手の防御カードを全公開する仕様対応）
 function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadcastGameState, skipIfImmuneToRound1CardEffect, cannotSelectAsAttackTargetInRound1, socket) {
     const attacker = gameState.players[attackerId];
     if (!attacker) return;
@@ -564,6 +558,11 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
                 break;
             }
 
+            // ★貫通発生時：対象が防御カードをセットしていれば、非公開設定でも全公開（revealed = true）にする
+            if (target.defenseCard) {
+                target.defenseCard.revealed = true;
+            }
+
             applyScoreChange(target, -3000);
             target.immunityCount = 2;
             finalLog = `${attacker.name} の「ショットガン」攻撃 (対象: ${target.name})！ 命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました。攻撃終了)`;
@@ -663,16 +662,18 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`;
             cutinRes = 'STEROID';
         } else {
-            applyScoreChange(target, -3000);
-            target.immunityCount = 2;
-            finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました)`;
-
+            // ★貫通発生時：対象が防御カードをセットしていれば、非公開設定でも全公開（revealed = true）にする
             if (target.defenseCard) {
+                target.defenseCard.revealed = true;
                 cutinRes = 'BLOCK_PIERCED';
                 defImg = target.defenseCard.card.image || '/images/wood_shield.png';
             } else {
                 cutinRes = 'HIT';
             }
+
+            applyScoreChange(target, -3000);
+            target.immunityCount = 2;
+            finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中ヒット！${penetrateMsg} 得点-3,000点！ (${target.name}は選択不可状態になりました)`;
         }
     }
 
