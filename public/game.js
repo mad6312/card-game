@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定UI/UX、リザルト連携、本番デバッグ切り替え、新ゲームログ初期化
+ * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定UI/UX、リザルト連携、本番デバッグ切り替え、切断安全中断ロジック
  */
 
 const socket = io();
@@ -151,7 +151,6 @@ socket.on('init', (data) => {
     isJoinedGame = data.isJoined || false;
     mySelectedAvatarId = data.avatar || 'avatar_default';
 
-    // デバッグパネルの表示/非表示（本番環境ガード）
     const debugPanel = document.getElementById('debug-panel-root');
     if (debugPanel) {
         debugPanel.style.display = (data.isDebugMode === false) ? 'none' : 'block';
@@ -213,6 +212,49 @@ socket.on('draftChoiceUpdated', (data) => {
     if (window.DraftManager) {
         window.DraftManager.updateChoices(data.choices, myId);
     }
+});
+
+// ★対戦中切断時の安全中断イベント受信（全演出・モーダル強制クリア＆ロビー参加中帰還）
+socket.on('gameAborted', (data) => {
+    // 1. 進行中・待機中のアニメーションキューを強制クリア
+    isAttackCutinPlaying = false;
+    attackCutinQueue = [];
+    pendingLPScoreQueue = [];
+
+    const cutinLayer = document.getElementById('attack-cutin-layer');
+    if (cutinLayer) cutinLayer.classList.remove('active');
+
+    const cutinOverlay = document.getElementById('cutin-overlay');
+    if (cutinOverlay) cutinOverlay.classList.add('hidden');
+
+    // 2. 開いているすべてのモーダル・ダイアログを強制クローズ
+    window.closeDropActionModal();
+    window.closeTimeBombModal();
+    if (window.ResultModal) window.ResultModal.close();
+    if (window.DraftManager) window.DraftManager.close();
+
+    const discardModal = document.getElementById('discard-modal');
+    if (discardModal) discardModal.style.display = 'none';
+
+    const bonusModal = document.getElementById('bonus-choice-modal');
+    if (bonusModal) bonusModal.style.display = 'none';
+
+    // 3. メイン盤面を非表示にし、ロビー待機画面へ安全に復帰
+    document.getElementById('game-main').style.display = 'none';
+    const lobbyArea = document.getElementById('lobby-area');
+    if (lobbyArea) lobbyArea.style.display = 'block';
+
+    // 残されたプレイヤーは「参加状態」を維持
+    isJoinedGame = true;
+    updateLobbyUI();
+
+    const countText = document.getElementById('lobby-count-text');
+    if (countText) {
+        countText.innerText = `現在の参加人数: ${data.playerCount || 0} / 4 人`;
+    }
+
+    // 4. 切断中断アラートを表示
+    alert(`⚠️ 【対戦中断】\n${data.disconnectedPlayerName} が回線切断したため、対戦を中断しロビーへ戻りました。\n（※あなたはエントリー状態のまま待機中です）`);
 });
 
 // 全10巡終了時のリザルト画面表示
@@ -518,7 +560,7 @@ socket.on('syncGameState', (data) => {
 
     const logBox = document.getElementById('log-box');
 
-    // ★新ゲーム開始時：過去の対戦ログを完全に初期化（クリア）
+    // 新ゲーム開始時：過去の対戦ログを完全に初期化（クリア）
     if (data.isNewGame && logBox) {
         logBox.innerText = '';
         currentRenderedScores = {};

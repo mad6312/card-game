@@ -82,7 +82,7 @@ function getSyncPayload(customLog = '', isNewGame = false) {
         isDebugMode: IS_DEBUG,
         started: gameState.started,
         draft: gameState.draft,
-        isNewGame: isNewGame, // 新ゲーム開始時のログ初期化フラグ
+        isNewGame: isNewGame,
         log: customLog
     };
 }
@@ -118,7 +118,6 @@ function startDraftPhase() {
         players: gameState.players
     });
 
-    // ログをリセットしてドラフト開始を通知
     broadcastGameState('4人揃いました！初期得点ドラフトを開始します。', true);
 }
 
@@ -223,7 +222,6 @@ function skipDraftAndStartGame() {
     gameState.currentTurnPlayerId = getNextPlayerId();
     gameState.turnPhase = 'BONUS_CHOICE';
 
-    // ログを完全リセットしてゲーム開始を通知
     broadcastGameState('ゲームを開始します。（全員25,000点）', true);
 }
 
@@ -314,7 +312,6 @@ function resolveDraft() {
         gameState.turnPhase = 'BONUS_CHOICE';
 
         const finalLog = logs.join('\n') + '\nドラフト完了！ゲームを開始します。';
-        // ログをリセットして新ゲーム開始
         broadcastGameState(finalLog, true);
     } else {
         io.emit('draftConflict', {
@@ -1410,12 +1407,62 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ★切断検知時：安全装置ロジック（対戦中切断なら残存者を参加中(3/4)としてロビーへ自動帰還）
     socket.on('disconnect', () => {
         console.log('切断:', socket.id);
         connectionOrder = connectionOrder.filter(id => id !== socket.id);
 
         const wasJoined = !!gameState.players[socket.id];
-        if (!gameState.started && wasJoined) {
+        const disconnectedName = (wasJoined && gameState.players[socket.id]) ? gameState.players[socket.id].name : 'プレイヤー';
+
+        // 1. ドラフト中または対戦中にプレイヤーが切断した場合の安全中断
+        if (wasJoined && (gameState.started || (gameState.draft && gameState.draft.phase === 'SELECTING'))) {
+            delete gameState.players[socket.id];
+
+            // 残されたプレイヤーのステータスをリセットし、ロビー「参加中（3/4）」として待機状態に維持
+            Object.values(gameState.players).forEach(p => {
+                p.score = 25000;
+                p.prevScore = 25000;
+                p.scoreChange = 0;
+                p.hand = [];
+                p.defenseCard = null;
+                p.draftResolved = false;
+                p.rematchAgreed = true; // 参加中状態を維持
+                p.immunityCount = 0;
+                p.invincibleTurns = 0;
+                p.invincibleSource = null;
+                p.armorRevealed = false;
+                p.steroidTurns = 0;
+                p.steroidRevealed = false;
+                p.darknessTurns = 0;
+                p.timeBombTurns = 0;
+                p.bombTransferAttempted = false;
+                p.bombDrawnThisTurn = false;
+                p.playedHandCardThisTurn = false;
+                p.playedObanThisTurn = false;
+                p.playedDarkMatterThisTurn = false;
+            });
+
+            // サーバーのゲーム進行状態を初期化
+            gameState.started = false;
+            gameState.turnPhase = 'WAITING';
+            gameState.draft = { phase: 'WAITING', choices: {}, availableScores: [5000, 1000, -1000, -5000], timer: null };
+            gameState.actedPlayerIds = [];
+            gameState.round = 1;
+
+            const remainingCount = Object.keys(gameState.players).length;
+
+            // 残された全員へ対戦中断＆ロビー帰還を通知
+            io.emit('gameAborted', {
+                disconnectedPlayerName: disconnectedName,
+                playerCount: remainingCount
+            });
+
+            io.emit('playerUpdate', { playerCount: remainingCount, started: false });
+            broadcastGameState(`[システム] ${disconnectedName} が回線切断したため、対戦を中断しロビーへ戻りました。`, true);
+
+        } else if (wasJoined && !gameState.started) {
+            // 2. 開始前（ロビー待機中）の切断
             delete gameState.players[socket.id];
             const newCount = getActiveJoinedCount();
             io.emit('playerUpdate', { playerCount: newCount, started: false });
@@ -1423,7 +1470,7 @@ io.on('connection', (socket) => {
 
         delete socketProfiles[socket.id];
 
-        if (Object.keys(gameState.players).length === 0 && gameState.started) {
+        if (Object.keys(gameState.players).length === 0) {
             if (gameState.draft.timer) clearTimeout(gameState.draft.timer);
             gameState = createInitialState();
             console.log('全員切断のためリセット');
