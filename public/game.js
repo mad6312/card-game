@@ -1,6 +1,6 @@
 /**
  * メインゲーム進行＆UI制御モジュール (public/game.js)
- * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定、リザルト連携、本番デバッグ切り替え
+ * 通信、ロビー待機エントリー、ドラフト連携、盤面描画、LPアニメーション、カットインキュー管理、ユーザー設定UI/UX、リザルト連携、本番デバッグ切り替え
  */
 
 const socket = io();
@@ -8,6 +8,7 @@ window.socket = socket;
 
 let myId = null;
 let myPlayerNumber = null;
+let mySelectedAvatarId = 'avatar_default'; // 自身の現在選択中アバターID
 let isJoinedGame = false; // ロビー参加エントリー状態
 let latestGameState = null;
 let currentCardSettings = {};
@@ -148,6 +149,7 @@ socket.on('init', (data) => {
     myId = data.id;
     window.myId = myId;
     isJoinedGame = data.isJoined || false;
+    mySelectedAvatarId = data.avatar || 'avatar_default';
 
     // デバッグパネルの表示/非表示（本番環境ガード）
     const debugPanel = document.getElementById('debug-panel-root');
@@ -173,6 +175,7 @@ socket.on('init', (data) => {
 socket.on('joinSuccess', (data) => {
     isJoinedGame = true;
     myPlayerNumber = data.playerNumber;
+    mySelectedAvatarId = data.avatar;
     const nameInput = document.getElementById('user-name-input');
     if (nameInput) nameInput.value = data.name;
     updateLobbyUI();
@@ -226,6 +229,7 @@ socket.on('gameOver', (data) => {
 socket.on('rematchSuccess', (data) => {
     isJoinedGame = true;
     myPlayerNumber = data.playerNumber;
+    mySelectedAvatarId = data.avatar;
 
     if (window.ResultModal) window.ResultModal.close();
     if (window.DraftManager) window.DraftManager.close();
@@ -248,6 +252,9 @@ socket.on('profileUpdated', (data) => {
     if (data.name) {
         const nameInput = document.getElementById('user-name-input');
         if (nameInput) nameInput.value = data.name;
+    }
+    if (data.avatar) {
+        mySelectedAvatarId = data.avatar;
     }
     renderAvatarPicker();
 });
@@ -388,11 +395,17 @@ socket.on('transferTimeBombResult', (data) => {
     }
 });
 
+let nameFeedbackTimer = null;
+
 function openUserSettingsModal() {
     if (latestGameState && myId && latestGameState.players[myId]) {
         const nameInput = document.getElementById('user-name-input');
         if (nameInput) nameInput.value = latestGameState.players[myId].name;
     }
+    // フィードバックメッセージを初期化
+    const feedback = document.getElementById('name-change-feedback');
+    if (feedback) feedback.innerText = '';
+
     renderAvatarPicker();
     document.getElementById('user-settings-modal').style.display = 'block';
 }
@@ -403,14 +416,27 @@ function closeUserSettingsModal() {
 
 function submitNameChange() {
     const nameInput = document.getElementById('user-name-input');
+    const feedback = document.getElementById('name-change-feedback');
     if (!nameInput) return;
+
     const newName = nameInput.value.trim();
     if (!newName) {
         alert('名前を入力してください。');
         return;
     }
+
     socket.emit('changePlayerName', { newName });
-    closeUserSettingsModal();
+
+    // モーダルを閉じずに「変更しました！」フィードバックを表示
+    if (feedback) {
+        feedback.innerText = '✓ 変更しました！';
+        feedback.style.color = '#2ecc71';
+
+        if (nameFeedbackTimer) clearTimeout(nameFeedbackTimer);
+        nameFeedbackTimer = setTimeout(() => {
+            if (feedback) feedback.innerText = '';
+        }, 3000);
+    }
 }
 
 function renderAvatarPicker() {
@@ -418,20 +444,27 @@ function renderAvatarPicker() {
     if (!container) return;
     container.innerHTML = '';
 
-    const currentAvatarId = (latestGameState && myId && latestGameState.players[myId])
-        ? latestGameState.players[myId].avatar
-        : 'avatar_default';
+    // 現在選択中のアバターID（参加中・未参加問わず正確に反映）
+    let currentAvatarId = mySelectedAvatarId;
+    if (latestGameState && myId && latestGameState.players[myId]) {
+        currentAvatarId = latestGameState.players[myId].avatar;
+    }
 
     availablePresetAvatars.forEach(av => {
         const img = document.createElement('img');
         img.src = av.image;
         img.alt = av.name;
         img.title = av.name;
+        // 初期表示時：現在のアバター画像を強調表示
         img.className = `avatar-picker-item ${av.id === currentAvatarId ? 'selected' : ''}`;
         img.onerror = () => { img.src = '/images/avatars/avatar_default.png'; };
         img.onclick = () => {
+            mySelectedAvatarId = av.id;
             socket.emit('changePlayerAvatar', { avatarId: av.id });
-            closeUserSettingsModal();
+
+            // モーダルを開いたまま、クリックしたアバターを即座に枠線強調表示に切り替え
+            container.querySelectorAll('.avatar-picker-item').forEach(el => el.classList.remove('selected'));
+            img.classList.add('selected');
         };
         container.appendChild(img);
     });

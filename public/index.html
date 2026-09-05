@@ -15,8 +15,11 @@
     <!-- 画面内自動補正ツールチップ -->
     <div id="global-tooltip"></div>
 
-    <!-- 常時表示スコアボードUI（画面左下固定・モーダル最前面） -->
-    <div id="global-scoreboard"></div>
+    <!-- 常時表示スコアボードUI（画面左下固定・折りたたみアコーディオン対応・初期展開） -->
+    <details id="global-scoreboard" class="scoreboard-panel" open>
+        <summary class="scoreboard-header">📊 スコアボード</summary>
+        <div id="scoreboard-list" class="scoreboard-list"></div>
+    </details>
 
     <!-- デバッグパネル（初期非表示・チラつき完全防止） -->
     <details class="debug-score-panel" id="debug-panel-root" style="display: none;" open>
@@ -134,19 +137,22 @@
                 </h3>
                 <div class="settings-section">
                     <div class="settings-section-title">👤 プレイヤー名変更</div>
-                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                    <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
                         <input type="text" id="user-name-input" maxlength="10" placeholder="名前を入力 (最大10文字)"
                             style="flex: 1; padding: 6px 10px; background: #334155; color: #fff; border: 1px solid #475569; border-radius: 4px; font-size: 13px;">
                         <button class="btn" style="background:#27ae60; margin:0; padding: 6px 12px; font-weight: bold;"
                             onclick="submitNameChange()">変更</button>
                     </div>
-                    <div style="font-size: 0.8em; color: #94a3b8; margin-top: 4px;">※ゲーム内の盤面やログに即座に反映されます。</div>
+                    <div id="name-change-feedback"
+                        style="min-height: 18px; font-size: 0.82em; font-weight: bold; color: #2ecc71; margin-top: 5px;">
+                    </div>
+                    <div style="font-size: 0.8em; color: #94a3b8; margin-top: 2px;">※ゲーム内の盤面やログに即座に反映されます。</div>
                 </div>
                 <div class="settings-section">
                     <div class="settings-section-title">🖼 プレイヤーアバター変更</div>
                     <div id="avatar-picker-list" class="avatar-picker-container"></div>
                     <div style="font-size: 0.8em; color: #94a3b8; margin-top: 4px;">
-                        ※変更したいアバターアイコンをクリックしてください（初期アバターに戻すことはできません）。</div>
+                        ※変更したいアバターアイコンをクリックしてください（選択枠線が強調表示されます）。</div>
                 </div>
                 <div style="text-align: right; margin-top: 15px;">
                     <button class="btn" style="background:#7f8c8d;" onclick="closeUserSettingsModal()">閉じる</button>

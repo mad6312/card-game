@@ -23,8 +23,8 @@ app.use(express.static('public'));
 // 本番公開時は環境変数 NODE_ENV=production で起動するか、
 // 下記を直接 false に設定することで全デバッグ機能が完全に封印されます。
 // ===================================================
-//const IS_DEBUG = process.env.NODE_ENV !== 'production';
-const IS_DEBUG = false;
+const IS_DEBUG = process.env.NODE_ENV !== 'production';
+//const IS_DEBUG = false;
 
 let cardSettings = createInitialCardSettings();
 

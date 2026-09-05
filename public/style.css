@@ -432,16 +432,14 @@ body {
 }
 
 /* ===================================================
-   スコアボードUIスタイル (4カラムGrid・可変幅fit-content・盤面接触防止)
+   スコアボードUIスタイル (4カラムGrid・アコーディオン折りたたみ対応・可変幅fit-content)
    =================================================== */
 #global-scoreboard {
     position: fixed;
     bottom: 20px;
     left: 20px;
     width: fit-content;
-    min-width: 330px;
-    max-width: min(480px, calc(50vw - 490px));
-    background: rgba(15, 23, 42, 0.94);
+    background: rgba(15, 23, 42, 0.95);
     border: 1.5px solid #f1c40f;
     border-radius: 8px;
     padding: 8px 12px;
@@ -451,12 +449,31 @@ body {
     box-sizing: border-box;
     display: none;
     font-size: 11px;
+    transition: all 0.2s ease-out;
+}
+
+/* 展開時の幅制御（盤面接触防止リミット） */
+#global-scoreboard[open] {
+    min-width: 330px;
+    max-width: min(480px, calc(50vw - 490px));
 }
 
 @media (max-width: 1440px) {
-    #global-scoreboard {
+    #global-scoreboard[open] {
         max-width: min(380px, calc(50vw - 490px));
     }
+}
+
+/* 折りたたみ時（閉じた状態）のコンパクトスタイル */
+#global-scoreboard:not([open]) {
+    min-width: auto;
+    padding: 6px 12px;
+}
+
+#global-scoreboard:not([open]) .scoreboard-header {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 
 .scoreboard-header {
@@ -468,6 +485,13 @@ body {
     padding-bottom: 5px;
     margin-bottom: 6px;
     letter-spacing: 0.5px;
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s;
+}
+
+.scoreboard-header:hover {
+    color: #ffffff;
 }
 
 .scoreboard-list {

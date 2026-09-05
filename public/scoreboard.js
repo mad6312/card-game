@@ -1,6 +1,6 @@
 /**
  * スコアボードUI制御モジュール (scoreboard.js)
- * 4カラム・グリッド構造により、名前・状態バッジ・持ち点・点差の縦列を美しく整列描画します。
+ * 4カラム・グリッド構造、アコーディオン開閉維持、名前・状態バッジ・持ち点・点差の縦列統一整列
  */
 
 (function (window) {
@@ -96,13 +96,14 @@
     }
 
     /**
-     * スコアボードの描画・更新処理（4カラム完全同期）
+     * スコアボードの描画・更新処理（4カラム完全同期・開閉状態維持）
      * @param {Object} players プレイヤー一覧データ
      * @param {string} myId 自身のソケットID
      * @param {Array} presetAvatars プリセットアバター一覧
      */
     function updateScoreboard(players, myId, presetAvatars) {
         const container = document.getElementById('global-scoreboard');
+        const listContainer = document.getElementById('scoreboard-list');
         if (!container || !players) return;
 
         const playerList = Object.values(players);
@@ -136,7 +137,7 @@
             const isMe = (p.id === myId);
             const rank = rankMap[p.id];
 
-            // アバター画像パスの解決
+            // アバター画像パス解決
             let avatarSrc = '/images/avatars/avatar_default.png';
             if (p.avatar && p.avatar !== 'avatar_default') {
                 const matched = (presetAvatars || []).find(a => a.id === p.avatar);
@@ -170,7 +171,7 @@
                         <span class="scoreboard-name" title="${p.name}">${p.name}</span>
                     </div>
 
-                    <!-- カラム2: 状態ステータスバッジ（新設・左揃え） -->
+                    <!-- カラム2: 状態ステータスバッジ（左揃え） -->
                     ${badgesColHtml}
 
                     <!-- カラム3: 現在の得点（右揃えで縦列統一） -->
@@ -182,10 +183,10 @@
             `;
         });
 
-        container.innerHTML = `
-            <div class="scoreboard-header">📊 スコアボード</div>
-            <div class="scoreboard-list">${rowsHtml}</div>
-        `;
+        // details全体の開閉状態を維持したまま、中身のリスト部分のみを更新
+        if (listContainer) {
+            listContainer.innerHTML = rowsHtml;
+        }
     }
 
     // グローバル公開
