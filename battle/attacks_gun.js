@@ -1,7 +1,7 @@
 /**
  * 銃撃・爆撃系攻撃カード実行モジュール (battle/attacks_gun.js)
  * ショットガン・グレネード（単体/グループ/スプラッシュ/カウンター）
- * ※ショットガン貫通時に対象のセット中防御カードを全公開する処理を追加
+ * ※グレネードグループ攻撃時のタイマー変数参照バグを修正
  */
 
 const { applyScoreChange } = require('./common');
@@ -419,7 +419,8 @@ function executeGrenadeGroupAttack(gameState, attackerId, io, broadcastGameState
         }
 
         const baseDuration = Math.max(1200, steps.length * 600 + 1000);
-        const animDuration = pendingDarkMatterCutin ? (baseDuration + 1400 * pendingDarkMatterCutin.length) : baseDuration;
+        // ★修正箇所：pendingDarkMatterCutins 配列の長さを正しく判定
+        const animDuration = pendingDarkMatterCutins.length > 0 ? (baseDuration + 1400 * pendingDarkMatterCutins.length) : baseDuration;
         setTimeout(() => {
             broadcastGameState(finalLog);
         }, animDuration);
@@ -558,7 +559,6 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
                 break;
             }
 
-            // ★貫通発生時：対象が防御カードをセットしていれば、非公開設定でも全公開（revealed = true）にする
             if (target.defenseCard) {
                 target.defenseCard.revealed = true;
             }
@@ -662,7 +662,6 @@ function executeShotgunAttack(gameState, attackerId, targetTypeOrId, io, broadca
             finalLog = logPrefix + `(成功率:${baseHitRate * 100}%) 命中！${penetrateMsg} しかし ${target.name} は「ステロイド状態」のため攻撃が無効化されました！`;
             cutinRes = 'STEROID';
         } else {
-            // ★貫通発生時：対象が防御カードをセットしていれば、非公開設定でも全公開（revealed = true）にする
             if (target.defenseCard) {
                 target.defenseCard.revealed = true;
                 cutinRes = 'BLOCK_PIERCED';
